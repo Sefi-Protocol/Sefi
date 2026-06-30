@@ -8,9 +8,11 @@ import { buildSourceRecord, computeAdapterHash } from "@sefi/source-records";
 import {
   assembleAnswer,
   buildFact,
+  checkFreshness,
   factValue,
   riskDirection,
 } from "@sefi/semantic-core";
+import { buildAndSaveCapsule } from "@sefi/context-capsules";
 import type {
   AdapterContext,
   BlendPoolFacts,
@@ -83,6 +85,16 @@ export class BlendAdapter {
 
     const reserves: BlendPoolFacts["reserves"] = [];
     for (const [assetId, r] of pool.reserves as Map<string, any>) {
+      const cfg = r.config ?? {};
+      // util / max_util are stored as 7-dp fixed point on chain.
+      const utilizationCap =
+        typeof cfg.max_util === "number" ? (cfg.max_util / 1e7).toFixed(4) : undefined;
+      const supplyCap =
+        cfg.supply_cap != null ? cfg.supply_cap.toString() : undefined;
+      const emissionsPerSecond =
+        r.supplyEmissions?.eps != null
+          ? r.supplyEmissions.eps.toString()
+          : undefined;
       reserves.push({
         asset: assetId,
         symbol: this.label(assetId, symbols),
@@ -93,6 +105,12 @@ export class BlendAdapter {
         utilization: String(r.getUtilizationFloat?.() ?? 0),
         collateralFactor: String(r.getCollateralFactor?.() ?? ""),
         liabilityFactor: String(r.getLiabilityFactor?.() ?? ""),
+        utilizationCap,
+        supplyCap,
+        borrowApr: r.borrowApr != null ? String(r.borrowApr) : undefined,
+        supplyApr: r.supplyApr != null ? String(r.supplyApr) : undefined,
+        emissionsPerSecond,
+        enabled: cfg.enabled,
       });
     }
 
@@ -111,6 +129,8 @@ export class BlendAdapter {
       };
     }
 
+    const backstop = await this.fetchBackstop(pool, poolId);
+
     const facts: BlendPoolFacts = {
       protocol: "blend",
       poolId,
@@ -118,6 +138,7 @@ export class BlendAdapter {
       poolStatus: mapStatus(pool.metadata?.status ?? -1),
       reserves,
       oracle,
+      backstop,
       ledger,
     };
 
@@ -135,6 +156,35 @@ export class BlendAdapter {
       adapterHash: ADAPTER_HASH,
     });
     return { pool: facts, sources: [src] };
+  }
+
+  /** Load pool backstop health via Backstop + BackstopPool estimate. */
+  private async fetchBackstop(
+    pool: any,
+    poolId: string,
+  ): Promise<BlendPoolFacts["backstop"]> {
+    const backstopId: string | undefined = pool.metadata?.backstop;
+    if (!backstopId) return { status: "unknown" };
+    try {
+      const sdk: any = await import("@blend-capital/blend-sdk");
+      const network = this.ctx.client.blendNetwork();
+      const backstop = await sdk.Backstop.load(network, backstopId);
+      const loadPool = pool.version === sdk.Version?.V1 ? sdk.BackstopPoolV1 : sdk.BackstopPoolV2;
+      const bp = await loadPool.load(network, backstopId, poolId);
+      const est = sdk.BackstopPoolEst.build(backstop.backstopToken, bp.poolBalance);
+      // Healthy when backstop value is meaningful and queued-for-withdrawal share is low.
+      const q4w = est.q4wPercentage ?? 0;
+      const status: "healthy" | "weak" =
+        est.totalSpotValue > 0 && q4w < 0.5 ? "healthy" : "weak";
+      return {
+        contractId: backstopId,
+        status,
+        totalSpotValue: est.totalSpotValue,
+        q4wPercentage: q4w,
+      };
+    } catch {
+      return { contractId: backstopId, status: "unknown" };
+    }
   }
 
   private async fetchUser(
@@ -203,42 +253,36 @@ export class BlendAdapter {
     );
     for (const r of pool.reserves) {
       const entityId = `${base}:${r.symbol}`;
-      facts.push(
-        buildFact({
-          network: this.ctx.network,
-          protocol: "blend",
-          entityType: "reserve",
-          entityId,
-          field: "pool.utilization",
-          value: r.utilization,
-          unit: "ratio",
-          ledgerSeq: pool.ledger,
-          sources,
-          confidence: "high",
-        }),
-        buildFact({
-          network: this.ctx.network,
-          protocol: "blend",
-          entityType: "reserve",
-          entityId,
-          field: "reserve.totalSupplied",
-          value: r.totalSupplied,
-          ledgerSeq: pool.ledger,
-          sources,
-          confidence: "high",
-        }),
-        buildFact({
-          network: this.ctx.network,
-          protocol: "blend",
-          entityType: "reserve",
-          entityId,
-          field: "reserve.totalBorrowed",
-          value: r.totalBorrowed,
-          ledgerSeq: pool.ledger,
-          sources,
-          confidence: "high",
-        }),
-      );
+      const reserveFact = (field: string, value: unknown, unit?: string) =>
+        facts.push(
+          buildFact({
+            network: this.ctx.network,
+            protocol: "blend",
+            entityType: "reserve",
+            entityId,
+            field,
+            value,
+            unit,
+            ledgerSeq: pool.ledger,
+            sources,
+            confidence: "high",
+          }),
+        );
+      reserveFact("pool.utilization", r.utilization, "ratio");
+      reserveFact("reserve.totalSupplied", r.totalSupplied);
+      reserveFact("reserve.totalBorrowed", r.totalBorrowed);
+      if (r.utilizationCap !== undefined)
+        reserveFact("reserve.utilizationCap", r.utilizationCap, "ratio");
+      if (r.supplyCap !== undefined)
+        reserveFact("reserve.supplyCap", r.supplyCap);
+      if (r.collateralFactor)
+        reserveFact("reserve.collateralFactor", r.collateralFactor, "ratio");
+      if (r.liabilityFactor)
+        reserveFact("reserve.liabilityFactor", r.liabilityFactor, "ratio");
+      if (r.borrowApr !== undefined) reserveFact("reserve.borrowApr", r.borrowApr, "ratio");
+      if (r.supplyApr !== undefined) reserveFact("reserve.supplyApr", r.supplyApr, "ratio");
+      if (r.emissionsPerSecond !== undefined)
+        reserveFact("reward.claimable", r.emissionsPerSecond, "eps");
     }
     if (pool.oracle)
       facts.push(
@@ -254,6 +298,37 @@ export class BlendAdapter {
           confidence: pool.oracle.status === "fresh" ? "high" : "low",
         }),
       );
+    if (pool.backstop) {
+      const bs = pool.backstop;
+      facts.push(
+        buildFact({
+          network: this.ctx.network,
+          protocol: "blend",
+          entityType: "backstop",
+          entityId: `backstop:${pool.poolId}`,
+          field: "backstop.status",
+          value: bs.status,
+          ledgerSeq: pool.ledger,
+          sources,
+          confidence: bs.status === "unknown" ? "low" : "high",
+        }),
+      );
+      if (bs.totalSpotValue !== undefined)
+        facts.push(
+          buildFact({
+            network: this.ctx.network,
+            protocol: "blend",
+            entityType: "backstop",
+            entityId: `backstop:${pool.poolId}`,
+            field: "backstop.value",
+            value: bs.totalSpotValue,
+            unit: "usd",
+            ledgerSeq: pool.ledger,
+            sources,
+            confidence: "high",
+          }),
+        );
+    }
     return facts;
   }
 
@@ -401,13 +476,29 @@ export class BlendAdapter {
         );
     }
 
+    const capsule = await buildAndSaveCapsule(
+      {
+        network: this.ctx.network,
+        protocols: ["blend"],
+        facts,
+        sourceRecords: ctx.sourceRecords,
+      },
+      this.ctx.store,
+    );
+    const fresh = checkFreshness(facts);
+
     return assembleAnswer({
       text: parts.join(" "),
       decision,
       recommendedActions: recommended,
       facts,
       sourceRecords: ctx.sourceRecords,
-      warnings: [...ctx.warnings, "This is source-backed but not yet ZK-proven."],
+      contextCapsuleId: capsule.id,
+      warnings: [
+        ...ctx.warnings,
+        ...fresh.warnings,
+        "This is source-backed but not yet ZK-proven.",
+      ],
     });
   }
 

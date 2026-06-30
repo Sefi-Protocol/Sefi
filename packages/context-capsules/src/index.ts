@@ -56,6 +56,25 @@ export interface BuildCapsuleInput {
   sourceRecords: SourceRecord[];
 }
 
+/** Anything that can persist a capsule (the store satisfies this). */
+export interface CapsuleSink {
+  saveCapsule(capsule: ContextCapsule): Promise<void>;
+}
+
+/**
+ * Build a capsule and persist it through `sink` if provided. Used by every
+ * adapter's ask() so single-protocol answers also leave a capsule + roots
+ * behind (spec §25), not just the composite path.
+ */
+export async function buildAndSaveCapsule(
+  input: BuildCapsuleInput,
+  sink?: CapsuleSink,
+): Promise<ContextCapsule> {
+  const capsule = buildCapsule(input);
+  if (sink) await sink.saveCapsule(capsule);
+  return capsule;
+}
+
 /**
  * Build a {@link ContextCapsule} (spec §12.3). Computes all three roots plus the
  * adapter-set hash and ledger range. `capsuleType` is derived from the number

@@ -231,6 +231,95 @@ export class StellarClient {
     };
   }
 
+  private async rpcServer(): Promise<any> {
+    const sdk = await this.sdk();
+    return new sdk.rpc.Server(this.rpcUrl, { allowHttp: true });
+  }
+
+  /** Latest ledger sequence as seen by the RPC node. */
+  async getLatestLedger(): Promise<number> {
+    const server = await this.rpcServer();
+    const res = await server.getLatestLedger();
+    return res.sequence;
+  }
+
+  /**
+   * Soroban RPC `getEvents` for a contract (spec §4.1 A). Supports checkpointed
+   * ingestion: pass `cursor` to resume, or `startLedger` for a fresh window.
+   * Returns decoded events plus the cursor/ledger to checkpoint on.
+   */
+  async getEvents(opts: {
+    contractIds: string[];
+    startLedger?: number;
+    cursor?: string;
+    topics?: string[][];
+    limit?: number;
+  }): Promise<{
+    events: Array<{
+      ledger: number;
+      contractId: string;
+      type: string;
+      topic: unknown[];
+      value: unknown;
+      txHash?: string;
+      id: string;
+      pagingToken: string;
+    }>;
+    latestLedger: number;
+    cursor?: string;
+  }> {
+    const sdk = await this.sdk();
+    const { scValToNative } = sdk;
+    const server = await this.rpcServer();
+    const filters = [
+      {
+        type: "contract",
+        contractIds: opts.contractIds,
+        topics: opts.topics,
+      },
+    ];
+    const req: any = { filters, limit: opts.limit ?? 100 };
+    // getEvents requires exactly one of startLedger / cursor.
+    if (opts.cursor) req.cursor = opts.cursor;
+    else req.startLedger = opts.startLedger ?? (await this.getLatestLedger()) - 100;
+    const res = await server.getEvents(req);
+    const events = (res.events ?? []).map((e: any) => ({
+      ledger: e.ledger,
+      contractId: e.contractId?.toString?.() ?? String(e.contractId),
+      type: e.type,
+      topic: (e.topic ?? []).map((t: any) => safeNative(scValToNative, t)),
+      value: safeNative(scValToNative, e.value),
+      txHash: e.txHash,
+      id: e.id,
+      pagingToken: e.pagingToken ?? e.id,
+    }));
+    const cursor = events.length ? events[events.length - 1].pagingToken : res.cursor;
+    return { events, latestLedger: res.latestLedger, cursor };
+  }
+
+  /**
+   * Soroban RPC `getLedgerEntries` for raw state capture (spec §4.1 A / §10.2).
+   * `keys` are base64 XDR LedgerKey strings (or sdk LedgerKey objects). Returns
+   * each entry's key/value XDR so source records can capture proof-grade state.
+   */
+  async getLedgerEntries(keys: Array<string | any>): Promise<{
+    entries: Array<{ keyXdr: string; valXdr: string; lastModifiedLedger?: number }>;
+    latestLedger: number;
+  }> {
+    const sdk = await this.sdk();
+    const server = await this.rpcServer();
+    const ledgerKeys = keys.map((k) =>
+      typeof k === "string" ? sdk.xdr.LedgerKey.fromXDR(k, "base64") : k,
+    );
+    const res = await server.getLedgerEntries(...ledgerKeys);
+    const entries = (res.entries ?? []).map((e: any) => ({
+      keyXdr: typeof e.key === "string" ? e.key : e.key?.toXDR?.("base64"),
+      valXdr: typeof e.val === "string" ? e.val : e.val?.toXDR?.("base64"),
+      lastModifiedLedger: e.lastModifiedLedgerSeq,
+    }));
+    return { entries, latestLedger: res.latestLedger };
+  }
+
   private async fetchJson(url: string): Promise<unknown> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeout);
@@ -240,6 +329,19 @@ export class StellarClient {
       return await res.json();
     } finally {
       clearTimeout(timer);
+    }
+  }
+}
+
+function safeNative(scValToNative: (v: any) => unknown, v: unknown): unknown {
+  if (v == null) return v;
+  try {
+    return scValToNative(v);
+  } catch {
+    try {
+      return (v as any).toXDR?.("base64") ?? String(v);
+    } catch {
+      return String(v);
     }
   }
 }

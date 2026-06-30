@@ -11,11 +11,13 @@ import { buildSourceRecord, computeAdapterHash } from "@sefi/source-records";
 import {
   assembleAnswer,
   buildFact,
+  checkFreshness,
   factValue,
   routeHopsOk,
   slippageBps,
   slippageOk,
 } from "@sefi/semantic-core";
+import { buildAndSaveCapsule } from "@sefi/context-capsules";
 
 const ADAPTER_NAME = "aquarius";
 const ADAPTER_VERSION = "1.0.0";
@@ -124,22 +126,85 @@ export class AquariusAdapter {
     return { sorted, pools, source };
   }
 
+  /**
+   * Read a pool's info/reserves/shares (spec §9: pool.get_info). pool_type maps
+   * to constant_product / stable_swap / concentrated; stable pools are "stable",
+   * everything else "volatile". TVL is the sum of reserves (proxy).
+   */
+  private async fetchPoolInfo(poolId: string): Promise<{
+    facts: PoolInfo;
+    sources: SourceRecord[];
+  }> {
+    const client = this.ctx.client;
+    const sources: SourceRecord[] = [];
+    const info: PoolInfo = { poolId };
+    try {
+      const r = await client.simulate(poolId, "get_info", []);
+      sources.push(this.record("get_info", poolId, normalizeBigInts(r.value), r.resultXdr, r.latestLedger));
+      const m = r.value as any;
+      info.poolType = mapPoolType(m?.pool_type);
+      info.feeBps = m?.fee != null ? Number(m.fee) : undefined;
+      info.tickSpacing = m?.tick_spacing != null ? Number(m.tick_spacing) : undefined;
+    } catch {
+      /* pool getter not present */
+    }
+    try {
+      const r = await client.simulate(poolId, "get_reserves", []);
+      sources.push(this.record("get_reserves", poolId, normalizeBigInts(r.value), r.resultXdr, r.latestLedger));
+      const reserves = (Array.isArray(r.value) ? r.value : []).map((x) => BigInt(String(x)));
+      info.reserves = reserves.map((x) => x.toString());
+      info.tvl = reserves.reduce((a, b) => a + b, 0n).toString();
+    } catch {
+      /* no reserves getter */
+    }
+    try {
+      const r = await client.simulate(poolId, "get_total_shares", []);
+      sources.push(this.record("get_total_shares", poolId, normalizeBigInts(r.value), r.resultXdr, r.latestLedger));
+      info.totalShares = String(r.value ?? "");
+    } catch {
+      /* no shares getter */
+    }
+    return { facts: info, sources };
+  }
+
+  private poolInfoFacts(info: PoolInfo, sources: SourceRecord[]): SemanticFact[] {
+    const facts: SemanticFact[] = [];
+    const led = sources[0]?.ledgerSeq;
+    const add = (field: string, value: unknown, unit?: string) =>
+      facts.push(
+        buildFact({
+          network: this.ctx.network,
+          protocol: "aquarius",
+          entityType: "pool",
+          entityId: info.poolId,
+          field,
+          value,
+          unit,
+          ledgerSeq: led,
+          sources,
+          confidence: "high",
+        }),
+      );
+    add("pool.exists", true, "bool");
+    if (info.poolType) add("pool.type", info.poolType);
+    if (info.poolType) add("pool.volatility", info.poolType === "stable_swap" ? "stable" : "volatile");
+    if (info.feeBps !== undefined) add("pool.fee_bps", info.feeBps, "bps");
+    if (info.tvl !== undefined) add("liquidity.depth", info.tvl, "stroops");
+    if (info.totalShares !== undefined) add("pool.total_shares", info.totalShares, "shares");
+    if (info.tickSpacing !== undefined) add("pool.tick_spacing", info.tickSpacing);
+    return facts;
+  }
+
   async getPools(req: GetPoolsRequest): Promise<ProtocolContext> {
     const { sorted, pools, source } = await this.discoverPools(req.tokenA, req.tokenB);
-    const facts: SemanticFact[] = pools.map((poolId) =>
-      buildFact({
-        network: this.ctx.network,
-        protocol: "aquarius",
-        entityType: "pool",
-        entityId: poolId,
-        field: "pool.exists",
-        value: true,
-        unit: "bool",
-        ledgerSeq: source.ledgerSeq,
-        sources: [source],
-        confidence: "high",
-      }),
-    );
+    const facts: SemanticFact[] = [];
+    const allSources: SourceRecord[] = [source];
+
+    for (const poolId of pools) {
+      const { facts: info, sources } = await this.fetchPoolInfo(poolId);
+      allSources.push(...sources);
+      facts.push(...this.poolInfoFacts(info, sources.length ? sources : [source]));
+    }
     if (!pools.length)
       facts.push(
         buildFact({
@@ -154,12 +219,12 @@ export class AquariusAdapter {
           confidence: "high",
         }),
       );
-    await this.persist(facts, [source]);
+    await this.persist(facts, allSources);
     return {
       protocol: "aquarius",
       network: this.ctx.network,
       facts,
-      sourceRecords: [source],
+      sourceRecords: allSources,
       warnings: pools.length ? [] : ["No Aquarius pool found for this pair."],
     };
   }
@@ -198,17 +263,55 @@ export class AquariusAdapter {
       };
     }
 
-    const poolId = pools[0];
     const inIdx = sorted.indexOf(cidIn);
     const outIdx = inIdx === 0 ? 1 : 0;
 
-    const est = await client.simulate(poolId, "estimate_swap", [
-      await client.u32(inIdx),
-      await client.u32(outIdx),
-      await client.u128(req.amountIn),
-    ]);
-    sources.push(this.record("estimate_swap", poolId, est.value, est.resultXdr, est.latestLedger));
-    const estimatedOut = BigInt(String(est.value ?? 0));
+    // Estimate across every candidate pool and pick the best output (the route
+    // a router would choose). This is multi-pool best-route selection.
+    let poolId = pools[0];
+    let estimatedOut = -1n;
+    let est: Awaited<ReturnType<typeof client.simulate>> | undefined;
+    for (const candidate of pools) {
+      try {
+        const r = await client.simulate(candidate, "estimate_swap", [
+          await client.u32(inIdx),
+          await client.u32(outIdx),
+          await client.u128(req.amountIn),
+        ]);
+        const out = BigInt(String(r.value ?? 0));
+        sources.push(this.record("estimate_swap", candidate, normalizeBigInts(r.value), r.resultXdr, r.latestLedger));
+        if (out > estimatedOut) {
+          estimatedOut = out;
+          poolId = candidate;
+          est = r;
+        }
+      } catch (e) {
+        warnings.push(`pool ${candidate.slice(0, 6)}… estimate failed: ${(e as Error).message.slice(0, 60)}`);
+      }
+    }
+    if (!est || estimatedOut < 0n) {
+      const facts = [
+        buildFact({
+          network: this.ctx.network,
+          protocol: "aquarius",
+          entityType: "route",
+          entityId: `aqua_route:${req.tokenIn}:${req.tokenOut}:${req.amountIn}`,
+          field: "route.available",
+          value: false,
+          unit: "bool",
+          sources,
+          confidence: "high",
+        }),
+      ];
+      await this.persist(facts, sources);
+      return {
+        protocol: "aquarius",
+        network: this.ctx.network,
+        facts,
+        sourceRecords: sources,
+        warnings: [...warnings, "No Aquarius pool could price this swap."],
+      };
+    }
 
     // Reference estimate (small amount) to derive spot price -> slippage.
     let slip: number | undefined;
@@ -283,6 +386,41 @@ export class AquariusAdapter {
         }),
       );
 
+    // Annotate the route with the winning pool's type/fee (spec §9.4).
+    try {
+      const { facts: info, sources: infoSources } = await this.fetchPoolInfo(poolId);
+      sources.push(...infoSources);
+      if (info.poolType)
+        facts.push(
+          buildFact({
+            network: this.ctx.network,
+            protocol: "aquarius",
+            entityType: "route",
+            entityId,
+            field: "pool.type",
+            value: info.poolType,
+            sources: infoSources.length ? infoSources : sources,
+            confidence: "high",
+          }),
+        );
+      if (info.feeBps !== undefined)
+        facts.push(
+          buildFact({
+            network: this.ctx.network,
+            protocol: "aquarius",
+            entityType: "route",
+            entityId,
+            field: "pool.fee_bps",
+            value: info.feeBps,
+            unit: "bps",
+            sources: infoSources.length ? infoSources : sources,
+            confidence: "high",
+          }),
+        );
+    } catch {
+      /* info optional */
+    }
+
     await this.persist(facts, sources);
     return {
       protocol: "aquarius",
@@ -308,6 +446,16 @@ export class AquariusAdapter {
   ): Promise<SefiAnswer> {
     const ctx = await this.estimateSwap(params);
     const facts = ctx.facts;
+    const capsule = await buildAndSaveCapsule(
+      {
+        network: this.ctx.network,
+        protocols: ["aquarius"],
+        facts,
+        sourceRecords: ctx.sourceRecords,
+      },
+      this.ctx.store,
+    );
+    const fresh = checkFreshness(facts);
     const available = factValue(facts, "route.available");
     if (available === false) {
       return assembleAnswer({
@@ -316,6 +464,7 @@ export class AquariusAdapter {
         recommendedActions: ["Try the Stellar DEX path instead"],
         facts,
         sourceRecords: ctx.sourceRecords,
+        contextCapsuleId: capsule.id,
         warnings: [...ctx.warnings, "This is source-backed but not yet ZK-proven."],
       });
     }
@@ -346,7 +495,12 @@ export class AquariusAdapter {
         : ["Reduce trade size or split the route to lower slippage"],
       facts,
       sourceRecords: ctx.sourceRecords,
-      warnings: [...ctx.warnings, "This is source-backed but not yet ZK-proven."],
+      contextCapsuleId: capsule.id,
+      warnings: [
+        ...ctx.warnings,
+        ...fresh.warnings,
+        "This is source-backed but not yet ZK-proven.",
+      ],
     });
   }
 
@@ -359,4 +513,41 @@ export class AquariusAdapter {
 
 function bigMax(a: bigint, b: bigint): bigint {
   return a > b ? a : b;
+}
+
+interface PoolInfo {
+  poolId: string;
+  poolType?: "constant_product" | "stable_swap" | "concentrated" | "unknown";
+  feeBps?: number;
+  tickSpacing?: number;
+  reserves?: string[];
+  tvl?: string;
+  totalShares?: string;
+}
+
+function mapPoolType(t: unknown): PoolInfo["poolType"] {
+  const s = String(t ?? "").toLowerCase();
+  if (s.includes("stable")) return "stable_swap";
+  if (s.includes("constant") || s.includes("standard") || s.includes("volatile"))
+    return "constant_product";
+  if (s.includes("concentrated") || s.includes("clmm")) return "concentrated";
+  return "unknown";
+}
+
+/** Recursively convert BigInt -> string so values are JSON-serialisable for hashing. */
+function normalizeBigInts(v: unknown): unknown {
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(normalizeBigInts);
+  if (v instanceof Map) {
+    const o: Record<string, unknown> = {};
+    for (const [k, val] of v.entries()) o[String(k)] = normalizeBigInts(val);
+    return o;
+  }
+  if (v && typeof v === "object") {
+    const o: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>))
+      o[k] = normalizeBigInts(val);
+    return o;
+  }
+  return v;
 }

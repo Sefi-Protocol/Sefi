@@ -22,7 +22,7 @@ Stellar sources ──▶ Protocol adapters ──▶ Source records  ─┐
 | `@sefi/shared-types` | Canonical types: `SourceRecord`, `SemanticFact`, `ContextCapsule`, `SefiAnswer` |
 | `@sefi/source-records` | Canonical JSON hashing, sha256, Merkle roots, source-record builder |
 | `@sefi/semantic-core` | Ontology, protocol computations, fact builder, answer assembler |
-| `@sefi/stellar-client` | Live Horizon (fetch) + Soroban `simulateTransaction` + asset/ScVal helpers |
+| `@sefi/stellar-client` | Live Horizon (fetch) + Soroban `simulateTransaction` / `getEvents` / `getLedgerEntries` + asset/ScVal helpers |
 | `@sefi/store` | `SefiStore` interface with PostgreSQL and in-memory implementations |
 | `@sefi/context-capsules` | Source/facts/composite roots, capsule builder, replay verification |
 | `@sefi/protocol-blend` | Live Blend adapter (via `@blend-capital/blend-sdk`) |
@@ -36,7 +36,7 @@ Stellar sources ──▶ Protocol adapters ──▶ Source records  ─┐
 | App | Role |
 |---|---|
 | `apps/api` | Express API server (spec §15 endpoints) + migrations on boot |
-| `apps/worker` | Background ingestion on the spec §4.3 cadences |
+| `apps/worker` | Seven named workers (spec §16): blend-pool, blend-event (checkpointed `getEvents`), aquarius-pool, aquarius-swap-cache, sdex-orderbook, sdex-liquiditypool, capsule-cleanup |
 | `apps/demo-agent` | Sample agent exercising the four spec §19 use cases |
 | `apps/dashboard` | (legacy) Next.js explorer carried over, pending a Stellar re-point |
 

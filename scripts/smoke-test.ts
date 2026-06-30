@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test (spec §18 deliverables, §24 checklist). Runs every
- * adapter + the composite path in mock mode, then verifies a freshly-built
- * capsule round-trips through the store and re-derives matching roots.
+ * adapter + the composite path against LIVE mainnet, then verifies a freshly
+ * built capsule round-trips through the store and re-derives matching roots.
  *
  *   pnpm smoke
  */

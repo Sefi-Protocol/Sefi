@@ -214,6 +214,14 @@ export class PgStore implements SefiStore {
     return out;
   }
 
+  async deleteCapsulesOlderThan(beforeIso: string): Promise<number> {
+    const res = await this.pool.query(
+      "DELETE FROM context_capsules WHERE created_at < $1",
+      [beforeIso],
+    );
+    return res.rowCount ?? 0;
+  }
+
   private async factSourceIds(factId: string): Promise<string[]> {
     const { rows } = await this.pool.query(
       "SELECT source_record_id FROM fact_sources WHERE fact_id = $1",

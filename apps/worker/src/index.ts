@@ -1,27 +1,32 @@
 import type { Network } from "@sefi/shared-types";
 import { SefiClient } from "@sefi/sdk";
 import { createStore } from "@sefi/store";
+import { buildSourceRecord, computeAdapterHash } from "@sefi/source-records";
 
 /**
- * Background ingestion worker (spec §16). Refreshes selected protocol surfaces
- * on the cadences recommended in spec §4.3. Targets come from env; sensible
- * testnet defaults are provided. Runs against the canonical store so the API
- * serves cached facts (background ingestion mode, spec §4.2).
+ * Background ingestion workers (spec §16) on the cadences from spec §4.3. The
+ * full named-worker set is implemented:
+ *   blend-pool-worker          — refresh configured Blend pools (60s)
+ *   blend-event-worker         — checkpointed getEvents ingestion (60s)
+ *   aquarius-pool-worker       — refresh Aquarius pool info (60s)
+ *   aquarius-swap-cache-worker — pre-warm common swap estimates (60s)
+ *   sdex-orderbook-worker      — refresh SDEX markets (45s)
+ *   sdex-liquiditypool-worker  — poll classic liquidity pools (60s)
+ *   capsule-cleanup-worker     — prune capsules past the retention window (1h)
+ * Everything is live; all writes go to the canonical store.
  */
 const NETWORK = (process.env.SEFI_NETWORK ?? "mainnet") as Network;
 
-const BLEND_POOLS = (process.env.SEFI_BLEND_POOLS ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-const AQUA_PAIRS = (process.env.SEFI_AQUA_PAIRS ?? "USDC:XLM")
-  .split(",")
-  .map((s) => s.trim().split(":"))
-  .filter((p) => p.length === 2);
-const SDEX_MARKETS = (process.env.SEFI_SDEX_MARKETS ?? "XLM:USDC")
-  .split(",")
-  .map((s) => s.trim().split(":"))
-  .filter((p) => p.length === 2);
+const list = (v: string | undefined) =>
+  (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const pairs = (v: string | undefined) =>
+  list(v).map((s) => s.split(":")).filter((p) => p.length === 2) as [string, string][];
+
+const BLEND_POOLS = list(process.env.SEFI_BLEND_POOLS);
+const AQUA_PAIRS = pairs(process.env.SEFI_AQUA_PAIRS ?? "USDC:XLM");
+const SDEX_MARKETS = pairs(process.env.SEFI_SDEX_MARKETS ?? "XLM:USDC");
+const SWAP_CACHE_AMOUNTS = list(process.env.SEFI_SWAP_AMOUNTS ?? "1000000000"); // 100 USDC
+const CAPSULE_TTL_HOURS = Number(process.env.SEFI_CAPSULE_TTL_HOURS ?? 24);
 
 const store = createStore();
 const sefi = new SefiClient(
@@ -34,44 +39,123 @@ const sefi = new SefiClient(
   store,
 );
 
+const EVENT_ADAPTER_HASH = computeAdapterHash("blend-event-worker", "1.0.0", "events-v1");
+/** In-process event ingestion checkpoints (cursor per contract). */
+const eventCursors = new Map<string, string | undefined>();
+
 function log(msg: string) {
   // eslint-disable-next-line no-console
   console.log(`[worker ${new Date().toISOString()}] ${msg}`);
 }
 
-async function refreshBlend() {
-  if (!BLEND_POOLS.length) return; // set SEFI_BLEND_POOLS to enable
+// ---- workers -------------------------------------------------------------
+
+async function blendPoolWorker() {
   for (const poolId of BLEND_POOLS) {
     try {
       const ctx = await sefi.blend().getPoolContext({ poolId });
-      log(`blend ${poolId}: ${ctx.facts.length} facts`);
+      log(`blend-pool ${poolId.slice(0, 6)}…: ${ctx.facts.length} facts`);
     } catch (e) {
-      log(`blend ${poolId} failed: ${(e as Error).message}`);
+      log(`blend-pool ${poolId.slice(0, 6)}… failed: ${(e as Error).message}`);
     }
   }
 }
 
-async function refreshAquarius() {
+/** Checkpointed Soroban event ingestion: stores raw event source records. */
+async function blendEventWorker() {
+  for (const poolId of BLEND_POOLS) {
+    try {
+      const cursor = eventCursors.get(poolId);
+      const res = await sefi.client.getEvents({
+        contractIds: [poolId],
+        cursor,
+        startLedger: cursor ? undefined : (await sefi.client.getLatestLedger()) - 1000,
+        limit: 100,
+      });
+      if (res.events.length) {
+        const sources = res.events.map((ev) =>
+          buildSourceRecord({
+            network: NETWORK,
+            protocol: "blend",
+            sourceKind: "stellar_rpc_events",
+            contractId: poolId,
+            functionName: `event:${ev.type}`,
+            response: { topic: ev.topic, value: ev.value, ledger: ev.ledger, id: ev.id },
+            ledgerSeq: ev.ledger,
+            latestLedger: res.latestLedger,
+            adapterName: "blend-event-worker",
+            adapterVersion: "1.0.0",
+            adapterHash: EVENT_ADAPTER_HASH,
+          }),
+        );
+        await store.saveSourceRecords(sources);
+      }
+      eventCursors.set(poolId, res.cursor);
+      log(`blend-event ${poolId.slice(0, 6)}…: +${res.events.length} events (cursor checkpointed)`);
+    } catch (e) {
+      log(`blend-event ${poolId.slice(0, 6)}… failed: ${(e as Error).message}`);
+    }
+  }
+}
+
+async function aquariusPoolWorker() {
   for (const [tokenA, tokenB] of AQUA_PAIRS) {
     try {
       const ctx = await sefi.aquarius().getPools({ tokenA, tokenB });
-      log(`aquarius ${tokenA}/${tokenB}: ${ctx.facts.length} facts`);
+      log(`aquarius-pool ${tokenA}/${tokenB}: ${ctx.facts.length} facts`);
     } catch (e) {
-      log(`aquarius ${tokenA}/${tokenB} failed: ${(e as Error).message}`);
+      log(`aquarius-pool ${tokenA}/${tokenB} failed: ${(e as Error).message}`);
     }
   }
 }
 
-async function refreshSdex() {
-  for (const [base, counter] of SDEX_MARKETS) {
-    try {
-      const ctx = await sefi.sdex().getMarket({ base, counter });
-      log(`sdex ${base}/${counter}: ${ctx.facts.length} facts`);
-    } catch (e) {
-      log(`sdex ${base}/${counter} failed: ${(e as Error).message}`);
+/** Pre-warm common swap estimates so agent answers are fast (spec §16). */
+async function aquariusSwapCacheWorker() {
+  for (const [tokenA, tokenB] of AQUA_PAIRS) {
+    for (const amountIn of SWAP_CACHE_AMOUNTS) {
+      try {
+        const ctx = await sefi.aquarius().estimateSwap({ tokenIn: tokenA, tokenOut: tokenB, amountIn });
+        log(`aquarius-swap-cache ${tokenA}->${tokenB} ${amountIn}: ${ctx.facts.length} facts`);
+      } catch (e) {
+        log(`aquarius-swap-cache ${tokenA}->${tokenB} failed: ${(e as Error).message}`);
+      }
     }
   }
 }
+
+async function sdexOrderbookWorker() {
+  for (const [base, counter] of SDEX_MARKETS) {
+    try {
+      const ctx = await sefi.sdex().getMarket({ base, counter });
+      log(`sdex-orderbook ${base}/${counter}: ${ctx.facts.length} facts`);
+    } catch (e) {
+      log(`sdex-orderbook ${base}/${counter} failed: ${(e as Error).message}`);
+    }
+  }
+}
+
+async function sdexLiquidityPoolWorker() {
+  for (const [base, counter] of SDEX_MARKETS) {
+    try {
+      const ctx = await sefi.sdex().getLiquidityPools({ base, counter });
+      log(`sdex-lp ${base}/${counter}: ${ctx.facts.length} facts`);
+    } catch (e) {
+      log(`sdex-lp ${base}/${counter} failed: ${(e as Error).message}`);
+    }
+  }
+}
+
+async function capsuleCleanupWorker() {
+  const before = new Date(Date.now() - CAPSULE_TTL_HOURS * 3600_000).toISOString();
+  try {
+    const n = await store.deleteCapsulesOlderThan(before);
+    log(`capsule-cleanup: removed ${n} capsules older than ${CAPSULE_TTL_HOURS}h`);
+  } catch (e) {
+    log(`capsule-cleanup failed: ${(e as Error).message}`);
+  }
+}
+
+// ---- scheduler -----------------------------------------------------------
 
 function every(seconds: number, fn: () => Promise<void>) {
   const run = () => fn().catch((e) => log(`job error: ${e.message}`));
@@ -81,13 +165,30 @@ function every(seconds: number, fn: () => Promise<void>) {
 
 async function main() {
   log(`starting (network=${NETWORK}, live)`);
-  // Frequencies per spec §4.3.
-  every(60, refreshBlend); // Blend top pools — 60s
-  every(60, refreshAquarius); // Aquarius top pools — 60s
-  every(45, refreshSdex); // SDEX order books — 30-60s
+  if (!BLEND_POOLS.length)
+    log("note: SEFI_BLEND_POOLS unset — blend-pool/blend-event workers idle");
+
+  const jobs = [
+    every(60, blendPoolWorker),
+    every(60, blendEventWorker),
+    every(60, aquariusPoolWorker),
+    every(60, aquariusSwapCacheWorker),
+    every(45, sdexOrderbookWorker),
+    every(60, sdexLiquidityPoolWorker),
+    every(3600, capsuleCleanupWorker),
+  ];
 
   if (process.env.SEFI_WORKER_ONCE === "1") {
-    await Promise.all([refreshBlend(), refreshAquarius(), refreshSdex()]);
+    jobs.forEach(clearInterval);
+    await Promise.all([
+      blendPoolWorker(),
+      blendEventWorker(),
+      aquariusPoolWorker(),
+      aquariusSwapCacheWorker(),
+      sdexOrderbookWorker(),
+      sdexLiquidityPoolWorker(),
+      capsuleCleanupWorker(),
+    ]);
     log("single pass complete (SEFI_WORKER_ONCE=1), exiting");
     process.exit(0);
   }

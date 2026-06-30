@@ -32,6 +32,9 @@ export interface SefiStore {
   getCapsuleSourceRecords(capsuleId: string): Promise<SourceRecord[]>;
   getCapsuleFacts(capsuleId: string): Promise<SemanticFact[]>;
 
+  /** Delete capsules created before `beforeIso`; returns count removed (cleanup worker). */
+  deleteCapsulesOlderThan(beforeIso: string): Promise<number>;
+
   init?(): Promise<void>;
   close?(): Promise<void>;
 }

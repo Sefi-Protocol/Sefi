@@ -17,6 +17,15 @@ export interface BlendReserveFacts {
   utilization: string;
   collateralFactor?: string;
   liabilityFactor?: string;
+  /** max_util — the configured utilization cap (ratio). */
+  utilizationCap?: string;
+  /** supply_cap in underlying token units (V2 reserves). */
+  supplyCap?: string;
+  borrowApr?: string;
+  supplyApr?: string;
+  /** Supply-side emissions per second (BLND), if active. */
+  emissionsPerSecond?: string;
+  enabled?: boolean;
 }
 
 export interface BlendPoolFacts {
@@ -29,6 +38,12 @@ export interface BlendPoolFacts {
     contractId: string;
     status: "fresh" | "stale" | "unknown";
     lastUpdatedLedger?: number;
+  };
+  backstop?: {
+    contractId?: string;
+    status: "healthy" | "weak" | "unknown";
+    totalSpotValue?: number;
+    q4wPercentage?: number;
   };
   ledger?: number;
 }

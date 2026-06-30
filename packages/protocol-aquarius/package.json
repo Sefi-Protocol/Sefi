@@ -12,6 +12,7 @@
     "@sefi/source-records": "workspace:*",
     "@sefi/semantic-core": "workspace:*",
     "@sefi/stellar-client": "workspace:*",
-    "@sefi/store": "workspace:*"
+    "@sefi/store": "workspace:*",
+    "@sefi/context-capsules": "workspace:*"
   }
 }

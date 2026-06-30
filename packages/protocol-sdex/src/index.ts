@@ -8,7 +8,14 @@ import type {
 import type { StellarClient } from "@sefi/stellar-client";
 import type { SefiStore } from "@sefi/store";
 import { buildSourceRecord, computeAdapterHash } from "@sefi/source-records";
-import { assembleAnswer, buildFact, factValue, spreadBps } from "@sefi/semantic-core";
+import {
+  assembleAnswer,
+  buildFact,
+  checkFreshness,
+  factValue,
+  spreadBps,
+} from "@sefi/semantic-core";
+import { buildAndSaveCapsule } from "@sefi/context-capsules";
 import { assetParams } from "./asset.js";
 
 const ADAPTER_NAME = "sdex";
@@ -69,13 +76,19 @@ export class SdexAdapter {
       limit: 10,
     });
     const body = r.body as any;
-    const bestBid = body?.bids?.[0]?.price ? Number(body.bids[0].price) : undefined;
-    const bestAsk = body?.asks?.[0]?.price ? Number(body.asks[0].price) : undefined;
+    const bids = (body?.bids ?? []) as Array<{ price: string; amount: string }>;
+    const asks = (body?.asks ?? []) as Array<{ price: string; amount: string }>;
+    const bestBid = bids[0]?.price ? Number(bids[0].price) : undefined;
+    const bestAsk = asks[0]?.price ? Number(asks[0].price) : undefined;
     const sources = [this.record("horizon_orderbook", r.endpoint, body, r.ledger)];
 
     const spread =
       bestBid !== undefined && bestAsk !== undefined
         ? Math.round(spreadBps(bestBid, bestAsk))
+        : undefined;
+    const mid =
+      bestBid !== undefined && bestAsk !== undefined
+        ? (bestBid + bestAsk) / 2
         : undefined;
     const entityId = `market:${base.label}:${counter.label}`;
     const facts: SemanticFact[] = [];
@@ -98,6 +111,33 @@ export class SdexAdapter {
     if (bestAsk !== undefined) add("market.best_ask", bestAsk);
     if (spread !== undefined) add("market.spread_bps", spread, "bps");
 
+    // Depth bands: cumulative ask-side base volume available within 1% / 2% of mid.
+    if (mid !== undefined) {
+      add("liquidity.depth_1pct", depthWithin(asks, mid, 0.01).toFixed(7), "base");
+      add("liquidity.depth_2pct", depthWithin(asks, mid, 0.02).toFixed(7), "base");
+    }
+
+    // Recent volume from /trades (last 100).
+    let recentVolume: string | undefined;
+    let recentTrades = 0;
+    try {
+      const t = await this.ctx.client.horizonGet("trades", {
+        ...assetParams("base", base),
+        ...assetParams("counter", counter),
+        order: "desc",
+        limit: 100,
+      });
+      const records = ((t.body as any)?._embedded?.records ?? []) as any[];
+      recentTrades = records.length;
+      const vol = records.reduce((a, x) => a + Number(x.base_amount ?? 0), 0);
+      recentVolume = vol.toFixed(7);
+      sources.push(this.record("horizon_trades", t.endpoint, t.body, t.ledger));
+      add("market.recent_volume", recentVolume, "base");
+      add("market.recent_trades", recentTrades, "count");
+    } catch {
+      /* trades optional */
+    }
+
     await this.persist(facts, sources);
     return {
       protocol: "stellar_dex",
@@ -108,6 +148,41 @@ export class SdexAdapter {
         bestBid === undefined || bestAsk === undefined
           ? ["Order book is one-sided or empty for this market."]
           : [],
+    };
+  }
+
+  /** Active offers count for a market (spec §10.2 /offers). */
+  async getOffers(req: GetMarketRequest): Promise<ProtocolContext> {
+    const selling = await this.ctx.client.horizonAsset(req.base);
+    const buying = await this.ctx.client.horizonAsset(req.counter);
+    const r = await this.ctx.client.horizonGet("offers", {
+      ...assetParams("selling", selling),
+      ...assetParams("buying", buying),
+      limit: 50,
+    });
+    const records = ((r.body as any)?._embedded?.records ?? []) as any[];
+    const sources = [this.record("horizon_offers", r.endpoint, r.body, r.ledger)];
+    const facts = [
+      buildFact({
+        network: this.ctx.network,
+        protocol: "stellar_dex",
+        entityType: "market",
+        entityId: `market:${selling.label}:${buying.label}`,
+        field: "market.open_offers",
+        value: records.length,
+        unit: "count",
+        ledgerSeq: r.ledger,
+        sources,
+        confidence: "medium",
+      }),
+    ];
+    await this.persist(facts, sources);
+    return {
+      protocol: "stellar_dex",
+      network: this.ctx.network,
+      facts,
+      sourceRecords: sources,
+      warnings: [],
     };
   }
 
@@ -183,6 +258,67 @@ export class SdexAdapter {
     };
   }
 
+  /**
+   * Strict-receive path (spec §10.2): given a desired destination amount, find
+   * the cheapest source amount on Horizon.
+   */
+  async findPathStrictReceive(req: {
+    sourceAsset: string;
+    destinationAsset: string;
+    destinationAmount: string;
+  }): Promise<ProtocolContext> {
+    const source = await this.ctx.client.horizonAsset(req.sourceAsset);
+    const dest = await this.ctx.client.horizonAsset(req.destinationAsset);
+    const r = await this.ctx.client.horizonGet("paths/strict-receive", {
+      ...assetParams("destination", dest),
+      destination_amount: stroopsToUnits(req.destinationAmount),
+      source_assets: canonicalAsset(source),
+    });
+    const records = (r.body as any)?._embedded?.records ?? [];
+    const best = records[0];
+    const available = Boolean(best);
+    const sourceAmount = best?.source_amount as string | undefined;
+    const sources = [this.record("horizon_paths", r.endpoint, r.body, r.ledger)];
+    const entityId = `path_recv:${source.label}:${dest.label}:${req.destinationAmount}`;
+    const facts: SemanticFact[] = [
+      buildFact({
+        network: this.ctx.network,
+        protocol: "stellar_dex",
+        entityType: "route",
+        entityId,
+        field: "path.available",
+        value: available,
+        unit: "bool",
+        ledgerSeq: r.ledger,
+        sources,
+        confidence: "medium",
+      }),
+    ];
+    if (sourceAmount !== undefined)
+      facts.push(
+        buildFact({
+          network: this.ctx.network,
+          protocol: "stellar_dex",
+          entityType: "route",
+          entityId,
+          field: "path.source_amount",
+          value: sourceAmount,
+          unit: "units",
+          ledgerSeq: r.ledger,
+          sources,
+          confidence: "medium",
+        }),
+      );
+    await this.persist(facts, sources);
+    return {
+      protocol: "stellar_dex",
+      network: this.ctx.network,
+      facts,
+      sourceRecords: sources,
+      warnings: available ? [] : ["No strict-receive path found on Horizon."],
+    };
+  }
+
   async getLiquidityPools(req: GetMarketRequest): Promise<ProtocolContext> {
     const base = await this.ctx.client.horizonAsset(req.base);
     const counter = await this.ctx.client.horizonAsset(req.counter);
@@ -191,29 +327,58 @@ export class SdexAdapter {
       limit: 5,
     });
     const body = r.body as any;
+    const records = (body?._embedded?.records ?? []) as any[];
     const sources = [this.record("horizon_liquidity_pools", r.endpoint, body, r.ledger)];
-    const count = body?._embedded?.records?.length ?? 0;
-    const facts = [
+    const entityId = `classic_lp:${base.label}:${counter.label}`;
+    const facts: SemanticFact[] = [
       buildFact({
         network: this.ctx.network,
         protocol: "stellar_amm",
         entityType: "pool",
-        entityId: `classic_lp:${req.base}:${req.counter}`,
+        entityId,
         field: "liquidity.available",
-        value: count,
+        value: records.length,
         unit: "count",
         ledgerSeq: r.ledger,
         sources,
         confidence: "medium",
       }),
     ];
+    const top = records[0];
+    if (top) {
+      const ledger = top.last_modified_ledger ?? r.ledger;
+      const poolEntity = `classic_lp:${top.id}`;
+      const add = (field: string, value: unknown, unit?: string) =>
+        facts.push(
+          buildFact({
+            network: this.ctx.network,
+            protocol: "stellar_amm",
+            entityType: "pool",
+            entityId: poolEntity,
+            field,
+            value,
+            unit,
+            ledgerSeq: ledger,
+            sources,
+            confidence: "medium",
+          }),
+        );
+      add("pool.id", top.id);
+      add("pool.total_shares", top.total_shares, "shares");
+      add("pool.fee_bps", top.fee_bp, "bps");
+      add("pool.trustlines", top.total_trustlines, "count");
+      for (const res of top.reserves ?? []) {
+        const sym = res.asset === "native" ? "XLM" : res.asset.split(":")[0];
+        add(`pool.reserve.${sym}`, res.amount, "units");
+      }
+    }
     await this.persist(facts, sources);
     return {
       protocol: "stellar_amm",
       network: this.ctx.network,
       facts,
       sourceRecords: sources,
-      warnings: count ? [] : ["No classic liquidity pool for this pair."],
+      warnings: records.length ? [] : ["No classic liquidity pool for this pair."],
     };
   }
 
@@ -243,6 +408,16 @@ export class SdexAdapter {
     });
     const facts = [...path.facts, ...market.facts];
     const sources = [...path.sourceRecords, ...market.sourceRecords];
+    const capsule = await buildAndSaveCapsule(
+      {
+        network: this.ctx.network,
+        protocols: ["stellar_dex"],
+        facts,
+        sourceRecords: sources,
+      },
+      this.ctx.store,
+    );
+    const fresh = checkFreshness(facts);
 
     const available = Boolean(factValue(path.facts, "path.available"));
     const out = String(factValue(path.facts, "path.estimated_out") ?? "0");
@@ -271,9 +446,11 @@ export class SdexAdapter {
         : ["Seek liquidity on an AMM route instead"],
       facts,
       sourceRecords: sources,
+      contextCapsuleId: capsule.id,
       warnings: [
         ...path.warnings,
         ...market.warnings,
+        ...fresh.warnings,
         "This is source-backed but not yet ZK-proven.",
       ],
     });
@@ -296,6 +473,25 @@ function assetReserve(asset: ResolvedAsset): string {
 /** Canonical asset string for Horizon path `*_assets` params. */
 function canonicalAsset(asset: ResolvedAsset): string {
   return asset.type === "native" ? "native" : `${asset.code}:${asset.issuer}`;
+}
+
+/**
+ * Cumulative base-asset volume on one side of the book reachable within `pct`
+ * of mid price (depth band). For asks (price ascending), sum `amount` while
+ * `price <= mid*(1+pct)`.
+ */
+function depthWithin(
+  levels: Array<{ price: string; amount: string }>,
+  mid: number,
+  pct: number,
+): number {
+  const limit = mid * (1 + pct);
+  let total = 0;
+  for (const lvl of levels) {
+    if (Number(lvl.price) > limit) break;
+    total += Number(lvl.amount);
+  }
+  return total;
 }
 
 /** Stellar amounts are fixed-point with 7 decimals; convert stroops -> units. */

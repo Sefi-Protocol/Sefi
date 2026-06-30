@@ -11,6 +11,8 @@
   "dependencies": {
     "@sefi/shared-types": "workspace:*",
     "@sefi/sdk": "workspace:*",
-    "@sefi/store": "workspace:*"
+    "@sefi/store": "workspace:*",
+    "@sefi/source-records": "workspace:*",
+    "@sefi/stellar-client": "workspace:*"
   }
 }

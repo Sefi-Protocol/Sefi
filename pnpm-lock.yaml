@@ -21,9 +21,18 @@ importers:
       '@sefi/sdk':
         specifier: workspace:*
         version: link:packages/sdk-ts
+      '@sefi/semantic-core':
+        specifier: workspace:*
+        version: link:packages/semantic-core
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:packages/shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:packages/source-records
+      '@sefi/stellar-client':
+        specifier: workspace:*
+        version: link:packages/stellar-client
       '@sefi/store':
         specifier: workspace:*
         version: link:packages/store
@@ -134,6 +143,12 @@ importers:
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:../../packages/source-records
+      '@sefi/stellar-client':
+        specifier: workspace:*
+        version: link:../../packages/stellar-client
       '@sefi/store':
         specifier: workspace:*
         version: link:../../packages/store
@@ -158,6 +173,9 @@ importers:
 
   packages/protocol-aquarius:
     dependencies:
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
       '@sefi/semantic-core':
         specifier: workspace:*
         version: link:../semantic-core
@@ -179,6 +197,9 @@ importers:
       '@blend-capital/blend-sdk':
         specifier: 3.1.0
         version: 3.1.0
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
       '@sefi/semantic-core':
         specifier: workspace:*
         version: link:../semantic-core
@@ -197,6 +218,9 @@ importers:
 
   packages/protocol-sdex:
     dependencies:
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
       '@sefi/semantic-core':
         specifier: workspace:*
         version: link:../semantic-core

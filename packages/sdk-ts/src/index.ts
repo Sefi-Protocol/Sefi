@@ -53,6 +53,15 @@ class SdexModule {
     destinationAsset: string;
     sourceAmount: string;
   }) => this.rt.sdex.findPath(args);
+  findPathStrictReceive = (args: {
+    sourceAsset: string;
+    destinationAsset: string;
+    destinationAmount: string;
+  }) => this.rt.sdex.findPathStrictReceive(args);
+  getLiquidityPools = (args: { base: string; counter: string }) =>
+    this.rt.sdex.getLiquidityPools(args);
+  getOffers = (args: { base: string; counter: string }) =>
+    this.rt.sdex.getOffers(args);
   ask = (args: {
     question: string;
     sourceAsset: string;
@@ -84,6 +93,11 @@ export class SefiClient {
 
   get store(): SefiStore {
     return this.rt.store;
+  }
+
+  /** The shared live Stellar client (used by workers for events/ledger entries). */
+  get client() {
+    return this.rt.client;
   }
 
   blend() {

@@ -61,4 +61,15 @@ export class MemoryStore implements SefiStore {
       .map((id) => this.facts.get(id))
       .filter((f): f is SemanticFact => Boolean(f));
   }
+
+  async deleteCapsulesOlderThan(beforeIso: string): Promise<number> {
+    let n = 0;
+    for (const [id, c] of this.capsules) {
+      if (c.createdAt < beforeIso) {
+        this.capsules.delete(id);
+        n++;
+      }
+    }
+    return n;
+  }
 }

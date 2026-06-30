@@ -13,6 +13,7 @@
     "@sefi/semantic-core": "workspace:*",
     "@sefi/stellar-client": "workspace:*",
     "@sefi/store": "workspace:*",
-    "@blend-capital/blend-sdk": "3.1.0"
+    "@blend-capital/blend-sdk": "3.1.0",
+    "@sefi/context-capsules": "workspace:*"
   }
 }

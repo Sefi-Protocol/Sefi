@@ -24,10 +24,10 @@ services:
         APP: api
     environment:
       DATABASE_URL: postgres://sefi:sefi@postgres:5432/sefi
-      SEFI_NETWORK: ${SEFI_NETWORK:-testnet}
-      SEFI_MOCK: ${SEFI_MOCK:-1}
+      SEFI_NETWORK: ${SEFI_NETWORK:-mainnet}
       SEFI_RPC_URL: ${SEFI_RPC_URL:-}
       SEFI_HORIZON_URL: ${SEFI_HORIZON_URL:-}
+      AQUARIUS_ROUTER: ${AQUARIUS_ROUTER:-}
       PORT: 8080
     ports:
       - "8080:8080"
@@ -43,8 +43,11 @@ services:
         APP: worker
     environment:
       DATABASE_URL: postgres://sefi:sefi@postgres:5432/sefi
-      SEFI_NETWORK: ${SEFI_NETWORK:-testnet}
-      SEFI_MOCK: ${SEFI_MOCK:-1}
+      SEFI_NETWORK: ${SEFI_NETWORK:-mainnet}
+      SEFI_RPC_URL: ${SEFI_RPC_URL:-}
+      SEFI_HORIZON_URL: ${SEFI_HORIZON_URL:-}
+      AQUARIUS_ROUTER: ${AQUARIUS_ROUTER:-}
+      SEFI_BLEND_POOLS: ${SEFI_BLEND_POOLS:-}
     depends_on:
       postgres:
         condition: service_healthy

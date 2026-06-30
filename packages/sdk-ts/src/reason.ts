@@ -3,7 +3,7 @@ import type {
   Decision,
   SefiAnswer,
 } from "@sefi/shared-types";
-import { assembleAnswer, factValue } from "@sefi/semantic-core";
+import { assembleAnswer, checkFreshness, factValue } from "@sefi/semantic-core";
 
 /**
  * Deterministic multi-protocol reasoner (spec §11.5). Combines Blend safety,
@@ -98,7 +98,11 @@ export function reasonComposite(
           : ["Do not borrow until liquidity/health improves"],
     facts,
     sourceRecords: ctx.sourceRecords,
-    warnings: [...warnings, "This is source-backed but not yet ZK-proven."],
+    warnings: [
+      ...warnings,
+      ...checkFreshness(facts).warnings,
+      "This is source-backed but not yet ZK-proven.",
+    ],
     contextCapsuleId: ctx.capsuleId,
   });
 }
