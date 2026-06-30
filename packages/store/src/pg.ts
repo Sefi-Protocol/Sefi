@@ -7,7 +7,7 @@ import type {
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
-import type { FactQuery, SefiStore } from "./types.js";
+import type { FactQuery, IngestionCheckpoint, SefiStore } from "./types.js";
 
 const { Pool } = pg;
 
@@ -294,6 +294,30 @@ export class PgStore implements SefiStore {
     );
     const intentId = rows[0]?.compute_intent_id;
     return intentId ? this.getComputeIntent(intentId) : null;
+  }
+
+  async saveCheckpoint(c: IngestionCheckpoint): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ingestion_checkpoints
+        (id, worker, protocol, contract_id, cursor, latest_ledger, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (id) DO UPDATE SET
+         cursor = EXCLUDED.cursor,
+         latest_ledger = EXCLUDED.latest_ledger,
+         updated_at = EXCLUDED.updated_at`,
+      [c.id, c.worker, c.protocol, c.contractId ?? null, c.cursor ?? null, c.latestLedger ?? null, c.updatedAt],
+    );
+  }
+  async getCheckpoint(id: string): Promise<IngestionCheckpoint | null> {
+    const { rows } = await this.pool.query("SELECT * FROM ingestion_checkpoints WHERE id=$1", [id]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id, worker: r.worker, protocol: r.protocol,
+      contractId: r.contract_id ?? undefined, cursor: r.cursor ?? undefined,
+      latestLedger: r.latest_ledger != null ? Number(r.latest_ledger) : undefined,
+      updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at,
+    };
   }
   async saveProofCard(c: ProofCard, proofEnvelopeId: string): Promise<void> {
     await this.pool.query(

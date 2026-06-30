@@ -40,12 +40,23 @@ const sefi = new SefiClient(
 );
 
 const EVENT_ADAPTER_HASH = computeAdapterHash("blend-event-worker", "1.0.0", "events-v1");
-/** In-process event ingestion checkpoints (cursor per contract). */
-const eventCursors = new Map<string, string | undefined>();
+const checkpointId = (poolId: string) => `blend-event-worker:blend:${poolId}`;
 
 function log(msg: string) {
   // eslint-disable-next-line no-console
   console.log(`[worker ${new Date().toISOString()}] ${msg}`);
+}
+
+/** Recursively convert BigInt -> string so event payloads are JSON/JSONB-safe. */
+function jsonSafe(v: unknown): unknown {
+  if (typeof v === "bigint") return v.toString();
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (v && typeof v === "object") {
+    const o: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) o[k] = jsonSafe(val);
+    return o;
+  }
+  return v;
 }
 
 // ---- workers -------------------------------------------------------------
@@ -65,7 +76,9 @@ async function blendPoolWorker() {
 async function blendEventWorker() {
   for (const poolId of BLEND_POOLS) {
     try {
-      const cursor = eventCursors.get(poolId);
+      // Resume from the persisted checkpoint (audit Part J §1).
+      const cp = await store.getCheckpoint(checkpointId(poolId));
+      const cursor = cp?.cursor;
       const res = await sefi.client.getEvents({
         contractIds: [poolId],
         cursor,
@@ -80,7 +93,7 @@ async function blendEventWorker() {
             sourceKind: "stellar_rpc_events",
             contractId: poolId,
             functionName: `event:${ev.type}`,
-            response: { topic: ev.topic, value: ev.value, ledger: ev.ledger, id: ev.id },
+            response: jsonSafe({ topic: ev.topic, value: ev.value, ledger: ev.ledger, id: ev.id }),
             ledgerSeq: ev.ledger,
             latestLedger: res.latestLedger,
             adapterName: "blend-event-worker",
@@ -90,8 +103,16 @@ async function blendEventWorker() {
         );
         await store.saveSourceRecords(sources);
       }
-      eventCursors.set(poolId, res.cursor);
-      log(`blend-event ${poolId.slice(0, 6)}…: +${res.events.length} events (cursor checkpointed)`);
+      await store.saveCheckpoint({
+        id: checkpointId(poolId),
+        worker: "blend-event-worker",
+        protocol: "blend",
+        contractId: poolId,
+        cursor: res.cursor,
+        latestLedger: res.latestLedger,
+        updatedAt: new Date().toISOString(),
+      });
+      log(`blend-event ${poolId.slice(0, 6)}…: +${res.events.length} events (cursor persisted)`);
     } catch (e) {
       log(`blend-event ${poolId.slice(0, 6)}… failed: ${(e as Error).message}`);
     }

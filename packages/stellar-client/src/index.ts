@@ -45,7 +45,11 @@ export interface StellarClientConfig {
 
 export interface HorizonResult {
   endpoint: string;
+  /** Resource's last_modified_ledger if present in the body. */
   ledger?: number;
+  /** Horizon node's latest ledger, from the `Latest-Ledger` response header. */
+  latestLedger?: number;
+  headers?: Record<string, string>;
   body: unknown;
 }
 
@@ -156,11 +160,20 @@ export class StellarClient {
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
-    const body = await this.fetchJson(url.toString());
+    const { body, headers } = await this.fetchJsonWithHeaders(url.toString());
     const ledger =
       (body as any)?.last_modified_ledger ??
       (body as any)?._embedded?.records?.[0]?.last_modified_ledger;
-    return { endpoint: url.toString(), ledger, body };
+    // Horizon returns the node's latest ledger in the `Latest-Ledger` header.
+    const headerLedger = headers["latest-ledger"];
+    const latestLedger = headerLedger ? Number(headerLedger) : undefined;
+    return {
+      endpoint: url.toString(),
+      ledger: ledger ?? latestLedger,
+      latestLedger,
+      headers,
+      body,
+    };
   }
 
   // ---- Soroban ScVal helpers --------------------------------------------
@@ -327,12 +340,25 @@ export class StellarClient {
   }
 
   private async fetchJson(url: string): Promise<unknown> {
+    return (await this.fetchJsonWithHeaders(url)).body;
+  }
+
+  /** Allows tests to inject a fetch implementation (e.g. mocked headers). */
+  fetchImpl: typeof fetch = (...args) => fetch(...(args as Parameters<typeof fetch>));
+
+  private async fetchJsonWithHeaders(
+    url: string,
+  ): Promise<{ body: unknown; headers: Record<string, string> }> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeout);
     try {
-      const res = await fetch(url, { signal: ctrl.signal });
+      const res = await this.fetchImpl(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-      return await res.json();
+      const headers: Record<string, string> = {};
+      res.headers.forEach((v, k) => {
+        headers[k.toLowerCase()] = v;
+      });
+      return { body: await res.json(), headers };
     } finally {
       clearTimeout(timer);
     }

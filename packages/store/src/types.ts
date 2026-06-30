@@ -16,6 +16,17 @@ export interface FactQuery {
   limit?: number;
 }
 
+export interface IngestionCheckpoint {
+  /** worker:protocol:contract */
+  id: string;
+  worker: string;
+  protocol: string;
+  contractId?: string;
+  cursor?: string;
+  latestLedger?: number;
+  updatedAt: string;
+}
+
 /**
  * Persistence contract used by adapters, the API and workers. Implemented by
  * {@link MemoryStore} (no deps, for tests/MVP/on-demand) and {@link PgStore}
@@ -45,6 +56,10 @@ export interface SefiStore {
   getProofEnvelope(id: string): Promise<ProofEnvelope | null>;
   /** Resolve the compiled intent linked to a proof envelope (audit Part E §4). */
   getComputeIntentByProof(proofId: string): Promise<CompiledComputeIntent | null>;
+
+  // Phase 1 reliability — worker ingestion checkpoints (audit Part J §1).
+  saveCheckpoint(checkpoint: IngestionCheckpoint): Promise<void>;
+  getCheckpoint(id: string): Promise<IngestionCheckpoint | null>;
   saveProofCard(card: ProofCard, proofEnvelopeId: string): Promise<void>;
   getProofCard(proofId: string): Promise<ProofCard | null>;
 

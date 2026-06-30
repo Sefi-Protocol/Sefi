@@ -6,7 +6,7 @@ import type {
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
-import type { FactQuery, SefiStore } from "./types.js";
+import type { FactQuery, IngestionCheckpoint, SefiStore } from "./types.js";
 
 /**
  * Zero-dependency in-memory store. Backs unit tests, the on-demand MVP path
@@ -96,6 +96,14 @@ export class MemoryStore implements SefiStore {
   async getComputeIntentByProof(proofId: string): Promise<CompiledComputeIntent | null> {
     const intentId = this.proofToIntent.get(proofId);
     return intentId ? (this.intents.get(intentId) ?? null) : null;
+  }
+
+  private checkpoints = new Map<string, IngestionCheckpoint>();
+  async saveCheckpoint(c: IngestionCheckpoint): Promise<void> {
+    this.checkpoints.set(c.id, c);
+  }
+  async getCheckpoint(id: string): Promise<IngestionCheckpoint | null> {
+    return this.checkpoints.get(id) ?? null;
   }
   async saveProofCard(card: ProofCard): Promise<void> {
     this.cards.set(card.proofId, card);

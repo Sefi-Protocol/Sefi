@@ -52,6 +52,7 @@ export class SdexAdapter {
     endpoint: string,
     response: unknown,
     ledger?: number,
+    latestLedger?: number,
   ): SourceRecord {
     return buildSourceRecord({
       network: this.ctx.network,
@@ -60,7 +61,8 @@ export class SdexAdapter {
       endpoint,
       response,
       ledgerSeq: ledger,
-      latestLedger: ledger,
+      // Prefer Horizon's `Latest-Ledger` header (audit Part J §2).
+      latestLedger: latestLedger ?? ledger,
       adapterName: ADAPTER_NAME,
       adapterVersion: ADAPTER_VERSION,
       adapterHash: ADAPTER_HASH,
@@ -80,7 +82,7 @@ export class SdexAdapter {
     const asks = (body?.asks ?? []) as Array<{ price: string; amount: string }>;
     const bestBid = bids[0]?.price ? Number(bids[0].price) : undefined;
     const bestAsk = asks[0]?.price ? Number(asks[0].price) : undefined;
-    const sources = [this.record("horizon_orderbook", r.endpoint, body, r.ledger)];
+    const sources = [this.record("horizon_orderbook", r.endpoint, body, r.ledger, r.latestLedger)];
 
     const spread =
       bestBid !== undefined && bestAsk !== undefined
@@ -131,7 +133,7 @@ export class SdexAdapter {
       recentTrades = records.length;
       const vol = records.reduce((a, x) => a + Number(x.base_amount ?? 0), 0);
       recentVolume = vol.toFixed(7);
-      sources.push(this.record("horizon_trades", t.endpoint, t.body, t.ledger));
+      sources.push(this.record("horizon_trades", t.endpoint, t.body, t.ledger, t.latestLedger));
       add("market.recent_volume", recentVolume, "base");
       add("market.recent_trades", recentTrades, "count");
     } catch {
@@ -161,7 +163,7 @@ export class SdexAdapter {
       limit: 50,
     });
     const records = ((r.body as any)?._embedded?.records ?? []) as any[];
-    const sources = [this.record("horizon_offers", r.endpoint, r.body, r.ledger)];
+    const sources = [this.record("horizon_offers", r.endpoint, r.body, r.ledger, r.latestLedger)];
     const facts = [
       buildFact({
         network: this.ctx.network,
@@ -203,7 +205,7 @@ export class SdexAdapter {
     const pathAssets: string[] = (best?.path ?? []).map((a: any) =>
       a.asset_type === "native" ? "XLM" : a.asset_code,
     );
-    const sources = [this.record("horizon_paths", r.endpoint, r.body, r.ledger)];
+    const sources = [this.record("horizon_paths", r.endpoint, r.body, r.ledger, r.latestLedger)];
 
     const entityId = `path:${source.label}:${dest.label}:${req.sourceAmount}`;
     const facts: SemanticFact[] = [
@@ -278,7 +280,7 @@ export class SdexAdapter {
     const best = records[0];
     const available = Boolean(best);
     const sourceAmount = best?.source_amount as string | undefined;
-    const sources = [this.record("horizon_paths", r.endpoint, r.body, r.ledger)];
+    const sources = [this.record("horizon_paths", r.endpoint, r.body, r.ledger, r.latestLedger)];
     const entityId = `path_recv:${source.label}:${dest.label}:${req.destinationAmount}`;
     const facts: SemanticFact[] = [
       buildFact({
@@ -328,7 +330,7 @@ export class SdexAdapter {
     });
     const body = r.body as any;
     const records = (body?._embedded?.records ?? []) as any[];
-    const sources = [this.record("horizon_liquidity_pools", r.endpoint, body, r.ledger)];
+    const sources = [this.record("horizon_liquidity_pools", r.endpoint, body, r.ledger, r.latestLedger)];
     const entityId = `classic_lp:${base.label}:${counter.label}`;
     const facts: SemanticFact[] = [
       buildFact({

@@ -104,6 +104,19 @@ async function bootstrap() {
     "/v1/sdex/ask",
     wrap((req) => sefi.sdex().ask(req.body)),
   );
+  // Expose the full SDEX surface (audit Part J §3).
+  app.post(
+    "/v1/sdex/offers",
+    wrap((req) => sefi.sdex().getOffers(req.body)),
+  );
+  app.post(
+    "/v1/sdex/strict-receive",
+    wrap((req) => sefi.sdex().findPathStrictReceive(req.body)),
+  );
+  app.post(
+    "/v1/sdex/liquidity-pools",
+    wrap((req) => sefi.sdex().getLiquidityPools(req.body)),
+  );
 
   // ---- composite ----
   app.post(
