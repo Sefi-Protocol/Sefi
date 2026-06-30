@@ -13,16 +13,31 @@ pnpm prove:composite       # live composite proof (set SEFI_DEMO_WALLET for the 
 pnpm verify:proof <id>     # local proof verification
 ```
 
-### ZK / BN254 (toolchain-gated)
+### ZK / BN254
 
 ```bash
 pnpm noir:build            # nargo check + compile circuits (skips without nargo)
 pnpm zk:test               # nargo check all circuits (skips without nargo/bb)
-pnpm contracts:test        # cargo test both Soroban contracts (incl real BN254 smoke)
+pnpm contracts:test        # cargo test both Soroban contracts (incl. REAL Groth16 verify)
 pnpm contracts:build       # build both contracts to wasm32v1-none
+
+# Real BN254 proving (requires nargo + bb; builds the complete witness first)
+pnpm prove:blend:bn254
+pnpm prove:composite:bn254
+pnpm verify:proof:bn254 <proofId>
+
+# Real on-chain Groth16 verification on Stellar testnet (stellar_verified)
+pnpm zk:testnet            # generate real proof, deploy/init, verify true+false on testnet
 pnpm deploy:verifier:testnet
 SEFI_REGISTRY_CONTRACT_ID=C... pnpm verify:proof:testnet <proofId>
 ```
+
+`contracts:test` includes `groth16_test::verify_real_groth16_proof_on_chain`,
+which generates a genuine ark-groth16 proof and asserts the contract's
+`verify_proof` returns true (valid) / false (wrong input) — proving the on-chain
+BN254 verifier is real, not a stub. The witness builder is unit-tested by
+`packages/proofs/src/witness.test.ts` against a TS reference circuit (tamper
+detection included).
 
 `zk:test` / `noir:build` skip with an explicit message when `nargo`/`bb` are
 absent; set `SEFI_REQUIRE_BN254=1` (or `REQUIRE_NOIR=1`) to make them fail
