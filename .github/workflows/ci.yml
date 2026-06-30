@@ -48,8 +48,28 @@ jobs:
           cargo test --manifest-path contracts/sefi_verifier_registry/Cargo.toml
           cargo test --manifest-path contracts/noir_ultrahonk_verifier/Cargo.toml
 
+  zk:
+    name: ZK (circom + snarkjs, real Groth16 proof of a ComputeIntent)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install circom 2.x
+        run: |
+          cargo install --quiet circom --version 2.2.3 || cargo install circom
+          circom --version
+      - run: pnpm install --no-frozen-lockfile
+      - name: Build circuit + deterministic proving key
+        run: SEFI_REQUIRE_BN254=1 pnpm circom:setup
+      - name: Real Groth16 proof + verify of a Sefi ComputeIntent (zk:test)
+        run: SEFI_REQUIRE_BN254=1 pnpm zk:test
+
   noir:
-    name: Noir circuits (nargo check)
+    name: Noir circuits (nargo check, optional)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

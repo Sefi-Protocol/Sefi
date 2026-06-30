@@ -139,7 +139,13 @@ export type SefiScalarType =
   | "bool"
   | "enum";
 
-export type ProofBackendId = "bn254-noir" | "noir" | "risc0" | "prebuilt" | "local-dev";
+export type ProofBackendId =
+  | "bn254-groth16"
+  | "bn254-noir"
+  | "noir"
+  | "risc0"
+  | "prebuilt"
+  | "local-dev";
 
 export interface ComputeIntent {
   id?: string;
@@ -253,6 +259,10 @@ export interface ProofEnvelope {
   publicInputs: ProofPublicInputs;
   revealed: Record<string, string | number | boolean>;
   proofBytes: string;
+  /** snarkjs Groth16 artifacts for the bn254-groth16 backend (proof + publicSignals + vkey). */
+  groth16?: { proof: unknown; publicSignals: string[]; vkey: unknown };
+  /** UltraHonk verification key for the bn254-noir backend (base64). */
+  verificationKey?: string;
   verifierContractId?: string;
   verificationTx?: string;
   status: "created" | "proving" | "verified" | "failed";

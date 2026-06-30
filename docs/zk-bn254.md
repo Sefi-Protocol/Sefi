@@ -130,15 +130,43 @@ computes `vk_x = IC[0] + Σ pubᵢ·IC[i+1]` and the 4-term pairing check
 pnpm zk:testnet     # generate a real Groth16 proof, deploy/init, verify true+false on testnet
 ```
 
-### Remaining honest gap (UltraHonk wiring)
+### Default path: real Groth16 proof of the ComputeIntent → stellar_verified
 
-The compute-proof backend (`bn254-noir`) produces an **UltraHonk** proof via
-nargo+bb, whereas the deployed verifier checks **Groth16**. Until bb's UltraHonk
-verification key + proof format are wired into a verifier contract, an SDK
-*compute proof* is only committed on-chain (`proof_card_commitment_only`), not
-`stellar_verified`. The Groth16 verifier path above is genuinely
-`stellar_verified` today. To close the gap: deploy a bb-generated UltraHonk
-Soroban verifier, register its VK, and submit the bb proof bytes.
+The default `bn254-groth16` backend closes the bridge end-to-end:
+
+1. The complete witness (public roots + per-fact value/pathId/adapter/ledger +
+   Poseidon Merkle path/bits + private thresholds) feeds a **circom** circuit
+   (`circuits/circom/blend_utilization.circom`).
+2. The circuit uses circomlib Poseidon — which is byte-identical to the
+   `poseidon-lite` used for `zkFactsRoot`/`zkContextRoot` (verified by golden
+   vectors) — so the proof binds to the EXACT roots the capsule already commits.
+3. **snarkjs** produces a real Groth16/BN254 proof of the actual ComputeIntent;
+   it is verified locally with the circuit's verification key.
+4. The SAME proof + vkey serialise to the Soroban verifier's EIP-197 layout and
+   verify on-chain. `sefi.verify().onStellar(envelope)` returns
+   `verificationMode: "stellar_verified"`.
+
+```bash
+pnpm circom:setup            # deterministic: build circuit + proving key
+pnpm zk:test                 # real Groth16 proof of a ComputeIntent, verified (no account needed)
+pnpm prove:compute:testnet   # prove → verify the SAME proof on testnet → stellar_verified
+```
+
+Public signals (snarkjs order): `[safe, zkContextRoot, zkFactsRoot, computeHash,
+resultHash]`. The hashes are reduced mod the BN254 scalar field for the circuit;
+`verifyLocal` checks the envelope's committed roots against the proof's public
+signals with the same reduction.
+
+Reproducibility: `scripts/circom-setup.sh` uses fixed entropy + a fixed beacon,
+so the proving key and the committed `*.vkey.json` are deterministic — anyone who
+runs setup gets the same VK that is registered on the Soroban verifier.
+
+### Alternate path: bn254-noir (UltraHonk)
+
+`bn254-noir` (nargo+bb) remains available via explicit `backend: "bn254-noir"`
+for the UltraHonk path. The deployed Soroban verifier checks Groth16, so an
+UltraHonk proof is committed-only on-chain until a bb-generated UltraHonk Soroban
+verifier is wired in. The default `bn254-groth16` path needs no such wiring.
 
 Provenance: `noir_ultrahonk_verifier` is original Sefi code built on the Soroban
 BN254 host API (MIT). It is not a vendored UltraHonk verifier.

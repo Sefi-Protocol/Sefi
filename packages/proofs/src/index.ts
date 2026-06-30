@@ -5,4 +5,5 @@ export * from "./verify.js";
 export * from "./prove.js";
 export * from "./noir.js";
 export * from "./bn254.js";
+export * from "./groth16.js";
 export * from "./witness.js";

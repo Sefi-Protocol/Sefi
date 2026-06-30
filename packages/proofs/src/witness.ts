@@ -278,6 +278,33 @@ function frDec(v: bigint): string {
   return (((v % BN254_FR_MODULUS) + BN254_FR_MODULUS) % BN254_FR_MODULUS).toString(10);
 }
 
+/**
+ * Build the snarkjs/circom input object for a witness. Signal names match the
+ * circom circuit (circuits/circom/*.circom): public roots, per-fact
+ * value/pathId/adapter/ledger/path/bits, and the private thresholds.
+ */
+export function witnessToCircomInput(w: CircuitWitness): Record<string, string | string[]> {
+  const dec = (v: bigint) => frDec(v);
+  const input: Record<string, string | string[]> = {
+    zkContextRoot: dec(w.public.zkContextRoot),
+    zkFactsRoot: dec(w.public.zkFactsRoot),
+    computeHash: dec(w.public.computeHash),
+    resultHash: dec(w.public.resultHash),
+    sourceRoot: dec(w.public.sourceRoot),
+    adapterSetHash: dec(w.public.adapterSetHash),
+  };
+  for (const f of w.facts) {
+    input[f.slot] = dec(f.value);
+    input[`${f.slot}_path_id`] = dec(f.pathId);
+    input[`${f.slot}_adapter`] = dec(f.adapterHash);
+    input[`${f.slot}_ledger`] = dec(f.ledgerSeq);
+    input[`${f.slot}_path`] = f.siblings.map(dec);
+    input[`${f.slot}_bits`] = f.bits.map((b) => String(b));
+  }
+  for (const [name, value] of Object.entries(w.thresholds)) input[name] = dec(value);
+  return input;
+}
+
 /** Serialise a witness to a Noir Prover.toml. Field names match the circuit's main(). */
 export function witnessToToml(w: CircuitWitness): string {
   const L: string[] = [];

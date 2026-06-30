@@ -133,6 +133,27 @@ export class NoirBackend implements ProofBackend {
 }
 
 /**
+ * BN254-Groth16 backend (Option B): generates a REAL Groth16/BN254 proof for the
+ * actual Sefi ComputeIntent via snarkjs over the circom recipe circuits, using
+ * the same circomlib Poseidon as the TS zk roots. The same proof verifies on the
+ * Soroban BN254 verifier -> genuine stellar_verified for Sefi compute proofs.
+ */
+export class Bn254Groth16Backend implements ProofBackend {
+  id = "bn254-groth16" as const;
+  supports(compiled: CompiledComputeIntent): boolean {
+    return isPrebuiltRecipe(compiled.name);
+  }
+  async prove(input: ProofRequest): Promise<ProofEnvelope> {
+    const { proveGroth16 } = await import("./groth16.js");
+    return proveGroth16(input);
+  }
+  async verifyLocal(envelope: ProofEnvelope): Promise<boolean> {
+    const { verifyGroth16Local } = await import("./groth16.js");
+    return verifyGroth16Local(envelope);
+  }
+}
+
+/**
  * BN254-Noir backend (audit Part F/H): generates a REAL Noir/UltraHonk proof via
  * `nargo` + `bb`. Requires the toolchain; throws an explicit, non-fallback error
  * when unavailable so production never silently downgrades. Proving/verifying is

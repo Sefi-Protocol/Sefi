@@ -22,14 +22,16 @@ export function buildProofCard(
   extraWarnings: string[] = [],
 ): ProofCard {
   const verified = envelope.status === "verified";
-  // Backend-specific honesty labels (audit Part H §5).
+  // Backend-specific honesty labels.
   const backendWarn: Record<string, string> = {
-    "bn254-noir": "bn254-noir: real BN254/UltraHonk proof generated; verified locally via bb (and on Stellar when verificationMode is stellar_verified).",
+    "bn254-groth16": "bn254-groth16: real Groth16/BN254 proof of the ComputeIntent; verified locally with snarkjs and verifiable on the Soroban BN254 verifier (stellar_verified).",
+    "bn254-noir": "bn254-noir: real BN254/UltraHonk proof generated; verified locally via bb.",
     "local-dev": "local-dev backend is a test verifier only, NOT a ZK proof.",
     prebuilt: "prebuilt backend is a signed policy proof over deterministic recipe outputs, NOT a ZK proof.",
     noir: "noir backend proof.",
     risc0: "risc0 backend.",
   };
+  const isRealZk = envelope.backend === "bn254-groth16" || envelope.backend === "bn254-noir";
   return {
     proofId: envelope.proofId,
     proofType: envelope.proofType,
@@ -39,11 +41,11 @@ export function buildProofCard(
     publicResult: evaluation.revealed,
     result: verified ? "verified" : "failed",
     trustModel: "proof-of-data-used",
-    verificationMode: envelope.backend === "bn254-noir" ? "offchain_local" : "offchain_local",
+    verificationMode: "offchain_local",
     warnings: [
       "Sefi proves a deterministic policy was evaluated over the selected context capsule (proof-of-data-used), not that raw ledger state originated from canonical consensus.",
       backendWarn[envelope.backend] ?? `${envelope.backend} backend.`,
-      ...(envelope.backend === "bn254-noir" ? [] : [DATA_USED_WARNING]),
+      ...(isRealZk ? [] : [DATA_USED_WARNING]),
       ...extraWarnings,
     ],
   };

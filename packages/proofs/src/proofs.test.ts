@@ -47,13 +47,15 @@ const INTENT: ComputeIntent = {
   proof: { backend: "prebuilt", verifyOn: "offchain", proveDataUsed: true },
 };
 
-test("auto routes named recipe to bn254-noir by default (no silent prebuilt)", () => {
+test("auto routes named recipe to bn254-groth16 by default (no silent prebuilt)", () => {
   const { capsule, facts } = blendFixture("7", "10", "fresh");
   const autoIntent = { ...INTENT, proof: { ...INTENT.proof, backend: "auto" as const } };
   const compiled = compileIntent({ intent: autoIntent, capsule, facts });
   const prev = process.env.SEFI_ALLOW_PREBUILT_PROOFS;
   delete process.env.SEFI_ALLOW_PREBUILT_PROOFS;
-  assert.equal(selectBackend(autoIntent, compiled), "bn254-noir");
+  // Default real path is bn254-groth16 (a real Groth16 proof of the actual
+  // ComputeIntent that verifies on the Soroban verifier).
+  assert.equal(selectBackend(autoIntent, compiled), "bn254-groth16");
   // With explicit opt-in, prebuilt is allowed.
   process.env.SEFI_ALLOW_PREBUILT_PROOFS = "1";
   assert.equal(selectBackend(autoIntent, compiled), "prebuilt");

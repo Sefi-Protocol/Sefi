@@ -1,0 +1,10 @@
+# All Groth16 build artifacts are regenerated deterministically by
+# `pnpm circom:setup` (fixed entropy + beacon -> the committed vkey always
+# matches a regenerated zkey). Only circuit SOURCES + the small vkey are tracked.
+build/*.ptau
+build/*.zkey
+build/*.r1cs
+build/*.sym
+build/*_js/
+# Committed: the verification key (tiny, pins the on-chain VK).
+!build/*.vkey.json

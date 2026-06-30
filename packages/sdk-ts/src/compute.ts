@@ -162,29 +162,61 @@ export class VerifyModule {
   /**
    * Stellar verification for a Sefi ComputeIntent proof envelope.
    *
-   * Honest scope: the compute proof backend (bn254-noir) produces an UltraHonk
-   * proof, and the deployed Soroban verifier is a BN254 *Groth16* verifier not
-   * yet wired to bb's UltraHonk VK. So an UltraHonk compute proof can only be
-   * COMMITTED on-chain (`proof_card_commitment_only`), never `stellar_verified`,
-   * via this method — we do not overclaim. Real on-chain `stellar_verified` for
-   * BN254 Groth16 proofs is available through {@link onStellarGroth16}.
+   * For a **bn254-groth16** envelope (the default real backend), this performs
+   * GENUINE on-chain verification: it serialises the snarkjs Groth16 proof +
+   * public signals to the Soroban verifier's byte layout and invokes
+   * `verify_proof` on-chain — returning `stellar_verified` iff the on-chain
+   * BN254 pairing check returns true. This is the actual Sefi compute proof, not
+   * a separate test proof.
+   *
+   * For other backends (e.g. bn254-noir / UltraHonk), the deployed Groth16
+   * verifier cannot check the proof, so it falls back to a
+   * `proof_card_commitment_only` on-chain commitment — never overclaiming.
    */
-  async onStellar(envelope: ProofEnvelope): Promise<{
-    status: "committed_on_stellar" | "not_configured";
-    verificationMode: "proof_card_commitment_only";
+  async onStellar(
+    envelope: ProofEnvelope,
+    opts: { verifierContractId?: string; identity?: string; network?: "testnet" | "mainnet" } = {},
+  ): Promise<{
+    status: "stellar_verified" | "rejected" | "committed_on_stellar" | "not_configured";
+    verificationMode: "stellar_verified" | "rejected" | "proof_card_commitment_only" | "not_configured";
+    backend?: string;
     verifierContractId?: string;
     registryContractId?: string;
     verificationTx?: string;
   }> {
-    void envelope;
     const registry = process.env.SEFI_REGISTRY_CONTRACT_ID;
-    const verifier = process.env.SEFI_VERIFIER_CONTRACT_ID;
-    if (!registry) {
-      return { status: "not_configured", verificationMode: "proof_card_commitment_only" };
+    const verifier = opts.verifierContractId ?? process.env.SEFI_VERIFIER_CONTRACT_ID;
+
+    // Real on-chain verification path for the actual Sefi Groth16 compute proof.
+    if (envelope.backend === "bn254-groth16" && envelope.groth16) {
+      if (!verifier)
+        return { status: "not_configured", verificationMode: "not_configured", backend: envelope.backend };
+      const { groth16ToSoroban } = await import("@sefi/proofs");
+      const sor = groth16ToSoroban(envelope.groth16 as any);
+      const r = await this.onStellarGroth16({
+        verifierContractId: verifier,
+        identity: opts.identity,
+        network: opts.network,
+        proof: sor.proof,
+        publicInputs: sor.publicInputs,
+      });
+      return {
+        status: r.status,
+        verificationMode: r.verificationMode,
+        backend: envelope.backend,
+        verifierContractId: verifier,
+        registryContractId: registry,
+        verificationTx: r.verificationTx,
+      };
     }
+
+    // Non-Groth16 backends: commitment-only (honest).
+    if (!registry)
+      return { status: "not_configured", verificationMode: "proof_card_commitment_only", backend: envelope.backend };
     return {
       status: "committed_on_stellar",
       verificationMode: "proof_card_commitment_only",
+      backend: envelope.backend,
       registryContractId: registry,
       verifierContractId: verifier,
     };

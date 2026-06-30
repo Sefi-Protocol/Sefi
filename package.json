@@ -34,17 +34,23 @@
     "verify:proof:bn254": "tsx scripts/verify-proof-bn254.ts",
     "zk:testnet": "tsx scripts/verify-groth16-testnet.ts",
     "zk:localnet": "tsx scripts/zk-localnet.ts",
-    "verify:groth16:testnet": "tsx scripts/verify-groth16-testnet.ts"
+    "verify:groth16:testnet": "tsx scripts/verify-groth16-testnet.ts",
+    "circom:setup": "bash scripts/circom-setup.sh",
+    "prove:compute:testnet": "tsx scripts/prove-verify-compute-testnet.ts",
+    "verify:compute:stellar": "tsx scripts/prove-verify-compute-testnet.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/pg": "^8.20.0",
+    "circomlib": "2.0.5",
     "tsx": "^4.20.0",
     "typescript": "^5.7.0"
   },
   "dependencies": {
     "@blend-capital/blend-sdk": "3.1.0",
+    "@sefi/compute": "workspace:*",
     "@sefi/context-capsules": "workspace:*",
+    "@sefi/proofs": "workspace:*",
     "@sefi/sdk": "workspace:*",
     "@sefi/semantic-core": "workspace:*",
     "@sefi/shared-types": "workspace:*",
@@ -54,8 +60,7 @@
     "@stellar/stellar-sdk": "13.3.0",
     "express": "^4.21.0",
     "pg": "^8.13.0",
-    "@sefi/compute": "workspace:*",
-    "@sefi/proofs": "workspace:*"
+    "snarkjs": "^0.7.5"
   },
   "packageManager": "pnpm@11.7.0"
 }

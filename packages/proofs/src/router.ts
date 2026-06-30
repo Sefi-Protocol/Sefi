@@ -4,6 +4,7 @@ import type {
   ProofBackendId,
 } from "@sefi/shared-types";
 import {
+  Bn254Groth16Backend,
   Bn254NoirBackend,
   LocalDevBackend,
   NoirBackend,
@@ -19,6 +20,7 @@ const REGISTRY: Record<ProofBackendId, () => ProofBackend> = {
   prebuilt: () => new PrebuiltBackend(),
   noir: () => new NoirBackend(),
   "bn254-noir": () => new Bn254NoirBackend(),
+  "bn254-groth16": () => new Bn254Groth16Backend(),
   risc0: () => new Risc0Backend(),
 };
 
@@ -58,11 +60,15 @@ export function selectBackend(
 
   if (isPrebuiltRecipe(intent.name)) {
     if (allowPrebuilt) return "prebuilt";
-    return "bn254-noir"; // default real path for named recipes
+    // bn254-groth16 is the default real path for named recipes: it produces a
+    // genuine Groth16 proof of the actual ComputeIntent that verifies on the
+    // Soroban BN254 verifier (stellar_verified). bn254-noir remains available
+    // via explicit backend selection for the UltraHonk path.
+    return "bn254-groth16";
   }
   if (isSmallArithmeticPolicy(compiled.ast)) {
     if (allowLocalDev && !isProduction()) return "local-dev";
-    return "bn254-noir";
+    return "bn254-groth16";
   }
   return "risc0";
 }

@@ -12,6 +12,7 @@
     "@sefi/source-records": "workspace:*",
     "@sefi/compute": "workspace:*",
     "@sefi/semantic-core": "workspace:*",
-    "@sefi/context-capsules": "workspace:*"
+    "@sefi/context-capsules": "workspace:*",
+    "snarkjs": "^0.7.5"
   }
 }

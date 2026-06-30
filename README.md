@@ -115,9 +115,19 @@ const proof = await sefi.compute().prove({
 proof.proofCard.publicResult;   // { safe: true }
 ```
 
-> Trust model: **proof-of-data-used**, not proof-of-data-origin. The off-chain
-> path is the source of truth; the Soroban verifier registry adds an optional
-> `proof_card_commitment_only` on-chain commitment — not on-chain ZK verification.
+> Trust model: **proof-of-data-used**, not proof-of-data-origin.
+
+The default `bn254-groth16` backend produces a **real Groth16/BN254 ZK proof of
+the actual ComputeIntent** (snarkjs + circom; the circuit uses the same circomlib
+Poseidon as the capsule's `zkFactsRoot`/`zkContextRoot`). The **same proof
+verifies on the Soroban BN254 verifier**, so `sefi.verify().onStellar(envelope)`
+returns a genuine `stellar_verified` for Sefi compute proofs — not a separate
+test proof:
+
+```bash
+pnpm circom:setup              # one-time: build circuit + proving key (deterministic)
+pnpm prove:compute:testnet     # prove ComputeIntent → verify SAME proof on testnet → stellar_verified
+```
 
 ### Real BN254 proof path (Noir + Soroban)
 

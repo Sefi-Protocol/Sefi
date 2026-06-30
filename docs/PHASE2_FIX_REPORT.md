@@ -135,13 +135,40 @@ Tracks the BN254 hardening work for `Sefi-Protocol/Sefi`.
   on-chain pass. Scripts: `pnpm zk:testnet`, `prove:blend:bn254`,
   `prove:composite:bn254`, `verify:proof:bn254`, `zk:localnet`.
 
+## Follow-up — actual ComputeIntent proof is now stellar_verified (Option B)
+
+The missing bridge (Sefi ComputeIntent proof → Soroban verifier →
+`stellar_verified`) is now closed with a real Groth16 path:
+
+- `bn254-groth16` backend (`packages/proofs/src/groth16.ts`) generates a REAL
+  Groth16/BN254 proof of the actual ComputeIntent via **circom + snarkjs**.
+- The circom circuit (`circuits/circom/blend_utilization.circom`) uses circomlib
+  Poseidon, which is byte-identical to the `poseidon-lite` used for
+  `zkFactsRoot`/`zkContextRoot` (golden-vector verified), so the proof binds to
+  the EXACT roots the capsule commits. Public signals:
+  `[safe, zkContextRoot, zkFactsRoot, computeHash, resultHash]`.
+- The SAME proof verifies on the Soroban BN254 verifier.
+  `sefi.verify().onStellar(envelope)` returns `verificationMode:
+  "stellar_verified"` for bn254-groth16 envelopes.
+- Verified LIVE on testnet: the actual Sefi compute proof returned **true**
+  on-chain (tx `1abbf6e729fd952d504cde2f3b67dba64f00085ab5b0b6ebb875ec0d49ad820a`),
+  wrong public input returned **false**; full SDK flow returned
+  `stellar_verified` (tx `5e3cf2fa0a85c18a63dd27addb49978c1dd10a4db84b373340498836d2363ca1`).
+- ProofEnvelope `publicInputs` now carry `zkFactsRoot` + `zkContextRoot`;
+  `verifyLocal` checks the proof's public signals against them (mod-r reduced).
+- Reproducible: `pnpm circom:setup` (deterministic VK) + `pnpm zk:test` (real
+  proof + verify, no account needed) + `pnpm prove:compute:testnet`. circom +
+  snarkjs are available; CI runs `SEFI_REQUIRE_BN254=1 pnpm zk:test`.
+- `auto` now defaults named recipes to `bn254-groth16`. `bn254-noir` (UltraHonk)
+  remains available via explicit selection.
+
 ## Remaining honest limitations
-- The on-chain verifier checks **Groth16**; the compute backend produces an
-  **UltraHonk** proof. Until bb's UltraHonk VK is wired into a verifier contract,
-  an SDK compute proof is committed-only on-chain — the Groth16 path is genuinely
+- bn254-noir (UltraHonk) proofs are still committed-only on-chain (no UltraHonk
+  Soroban verifier yet); the default bn254-groth16 path is fully
   `stellar_verified`.
+- Only the blend-utilization recipe has a circom circuit wired so far; the other
+  three recipes have Noir circuits + witness specs and follow the same pattern.
 - Trust model remains **proof-of-data-used**, never proof-of-data-origin.
-- Noir nargo/bb prove/verify runs only where the toolchain is installed.
 
 ## Sample proof card (private values redacted)
 ```json
