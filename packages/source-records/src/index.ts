@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   Network,
   Protocol,
+  SemanticFact,
   SourceKind,
   SourceRecord,
 } from "@sefi/shared-types";
@@ -13,6 +14,9 @@ export {
   hashResponse,
   hashXdr,
   merkleRoot,
+  merkleProof,
+  verifyMerkleProof,
+  type MerkleProofParts,
 } from "./hash.js";
 
 /**
@@ -89,4 +93,36 @@ export function recomputeResponseHash(record: SourceRecord): string {
   return record.rawXdr
     ? hashXdr(record.rawXdr)
     : hashResponse(record.rawResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: semantic-fact commitment (spec §3). Binds the exact fact VALUE used
+// by a compute to the context root, not just the source response hash.
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical projection of a semantic fact for hashing. Crucially includes
+ * `value`, so changing only a fact's value changes its hash (and thus the
+ * semanticFactsRoot). Excludes volatile fields (id, createdAt, confidence,
+ * rawHash) that do not affect the committed datum.
+ */
+export function canonicalFactForHash(fact: SemanticFact): unknown {
+  return {
+    schemaVersion: "sefi.semantic_fact.v2",
+    network: fact.network,
+    protocol: fact.protocol,
+    entityType: fact.entityType,
+    entityId: fact.entityId,
+    field: fact.field,
+    value: fact.value,
+    unit: fact.unit ?? null,
+    ledgerSeq: fact.ledgerSeq ?? null,
+    sourceRecordIds: [...fact.sourceRecordIds].sort(),
+    adapterHash: fact.adapterHash,
+  };
+}
+
+/** sha256 over the canonical fact projection (spec §3). */
+export function hashSemanticFact(fact: SemanticFact): string {
+  return sha256Hex(stableStringify(canonicalFactForHash(fact)));
 }

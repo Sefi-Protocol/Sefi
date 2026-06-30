@@ -1,6 +1,9 @@
 import pg from "pg";
 import type {
+  CompiledComputeIntent,
   ContextCapsule,
+  ProofCard,
+  ProofEnvelope,
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
@@ -220,6 +223,91 @@ export class PgStore implements SefiStore {
       [beforeIso],
     );
     return res.rowCount ?? 0;
+  }
+
+  async saveComputeIntent(i: CompiledComputeIntent): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO compute_intents
+        (id, name, intent_hash, compute_hash, context_root, source_root,
+         semantic_facts_root, adapter_set_hash, ast_json, fact_refs,
+         private_input_schema, reveal, hide, capsule_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        i.id, i.name, i.intentHash, i.computeHash, i.contextRoot, i.sourceRoot,
+        i.semanticFactsRoot, i.adapterSetHash, JSON.stringify(i.ast),
+        JSON.stringify(i.factRefs), JSON.stringify(i.privateInputSchema),
+        JSON.stringify(i.reveal), JSON.stringify(i.hide), i.capsuleId, i.createdAt,
+      ],
+    );
+  }
+  async getComputeIntent(id: string): Promise<CompiledComputeIntent | null> {
+    const { rows } = await this.pool.query("SELECT * FROM compute_intents WHERE id=$1", [id]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id, name: r.name, intentHash: r.intent_hash, computeHash: r.compute_hash,
+      contextRoot: r.context_root, sourceRoot: r.source_root,
+      semanticFactsRoot: r.semantic_facts_root, adapterSetHash: r.adapter_set_hash,
+      ast: r.ast_json, factRefs: r.fact_refs, privateInputSchema: r.private_input_schema,
+      reveal: r.reveal, hide: r.hide, capsuleId: r.capsule_id,
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    };
+  }
+  async saveProofEnvelope(e: ProofEnvelope, computeIntentId?: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO proof_envelopes
+        (id, proof_type, backend, compute_intent_id, public_inputs, revealed,
+         proof_bytes, verifier_contract_id, verification_tx, status, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status`,
+      [
+        e.proofId, e.proofType, e.backend, computeIntentId ?? null,
+        JSON.stringify(e.publicInputs), JSON.stringify(e.revealed), e.proofBytes,
+        e.verifierContractId ?? null, e.verificationTx ?? null, e.status, e.createdAt,
+      ],
+    );
+  }
+  async getProofEnvelope(id: string): Promise<ProofEnvelope | null> {
+    const { rows } = await this.pool.query("SELECT * FROM proof_envelopes WHERE id=$1", [id]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      proofId: r.id, proofType: r.proof_type, backend: r.backend,
+      publicInputs: r.public_inputs, revealed: r.revealed, proofBytes: r.proof_bytes,
+      verifierContractId: r.verifier_contract_id ?? undefined,
+      verificationTx: r.verification_tx ?? undefined, status: r.status,
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    };
+  }
+  async saveProofCard(c: ProofCard, proofEnvelopeId: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO proof_cards
+        (id, proof_envelope_id, proof_type, context_root, compute_hash,
+         public_result_hash, public_result, verifier_hash, timestamp_ledger,
+         result, trust_model, verification_mode, warnings)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        c.proofId, proofEnvelopeId, c.proofType, c.contextRoot, c.computeHash,
+        c.publicResultHash, JSON.stringify(c.publicResult), c.verifierHash ?? null,
+        c.timestampLedger ?? null, c.result, c.trustModel, c.verificationMode ?? null,
+        JSON.stringify(c.warnings),
+      ],
+    );
+  }
+  async getProofCard(proofId: string): Promise<ProofCard | null> {
+    const { rows } = await this.pool.query("SELECT * FROM proof_cards WHERE id=$1", [proofId]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      proofId: r.id, proofType: r.proof_type, contextRoot: r.context_root,
+      computeHash: r.compute_hash, publicResultHash: r.public_result_hash,
+      publicResult: r.public_result, verifierHash: r.verifier_hash ?? undefined,
+      timestampLedger: r.timestamp_ledger != null ? Number(r.timestamp_ledger) : undefined,
+      result: r.result, trustModel: r.trust_model,
+      verificationMode: r.verification_mode ?? undefined, warnings: r.warnings ?? [],
+    };
   }
 
   private async factSourceIds(factId: string): Promise<string[]> {

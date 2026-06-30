@@ -57,3 +57,60 @@ export function merkleRoot(leafHashes: string[]): string {
   }
   return level[0];
 }
+
+export interface MerkleProofParts {
+  leaf: string;
+  leafIndex: number;
+  siblings: string[];
+  root: string;
+}
+
+/**
+ * Build a Merkle inclusion proof for `leaf` within `leafHashes`, using the same
+ * sorted-leaves + duplicate-last construction as {@link merkleRoot}. Returns the
+ * sibling path (bottom-up) so a verifier can recompute the root.
+ */
+export function merkleProof(
+  leafHashes: string[],
+  leaf: string,
+): MerkleProofParts | null {
+  if (leafHashes.length === 0) return null;
+  const sorted = [...leafHashes].sort();
+  let index = sorted.indexOf(leaf);
+  if (index < 0) return null;
+  const leafIndex = index;
+  const siblings: string[] = [];
+  let level = sorted;
+  while (level.length > 1) {
+    const isRight = index % 2 === 1;
+    const pairIndex = isRight ? index - 1 : index + 1;
+    const sibling = pairIndex < level.length ? level[pairIndex] : level[index];
+    siblings.push(sibling);
+    const next: string[] = [];
+    for (let i = 0; i < level.length; i += 2) {
+      const left = level[i];
+      const right = i + 1 < level.length ? level[i + 1] : level[i];
+      next.push(sha256Hex(left + right));
+    }
+    level = next;
+    index = Math.floor(index / 2);
+  }
+  return { leaf, leafIndex, siblings, root: level[0] };
+}
+
+/** Verify a Merkle inclusion proof produced by {@link merkleProof}. */
+export function verifyMerkleProof(proof: {
+  leaf: string;
+  leafIndex: number;
+  siblings: string[];
+  root: string;
+}): boolean {
+  let hash = proof.leaf;
+  let index = proof.leafIndex;
+  for (const sibling of proof.siblings) {
+    const isRight = index % 2 === 1;
+    hash = isRight ? sha256Hex(sibling + hash) : sha256Hex(hash + sibling);
+    index = Math.floor(index / 2);
+  }
+  return hash === proof.root;
+}

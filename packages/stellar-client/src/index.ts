@@ -181,6 +181,12 @@ export class StellarClient {
     const sdk = await this.sdk();
     return sdk.xdr.ScVal.scvVec(items);
   }
+  /** Build a BytesN ScVal from a 0x-prefixed or raw hex string. */
+  async bytesScVal(hex: string): Promise<any> {
+    const sdk = await this.sdk();
+    const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+    return sdk.xdr.ScVal.scvBytes(Buffer.from(clean, "hex"));
+  }
 
   /** Sort token contract ids by raw 32-byte value (Aquarius `order_token_ids`). */
   async sortTokenIds(ids: string[]): Promise<string[]> {

@@ -15,9 +15,15 @@ importers:
       '@blend-capital/blend-sdk':
         specifier: 3.1.0
         version: 3.1.0
+      '@sefi/compute':
+        specifier: workspace:*
+        version: link:packages/compute
       '@sefi/context-capsules':
         specifier: workspace:*
         version: link:packages/context-capsules
+      '@sefi/proofs':
+        specifier: workspace:*
+        version: link:packages/proofs
       '@sefi/sdk':
         specifier: workspace:*
         version: link:packages/sdk-ts
@@ -135,6 +141,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-types
 
+  apps/proof-worker:
+    dependencies:
+      '@sefi/proofs':
+        specifier: workspace:*
+        version: link:../../packages/proofs
+      '@sefi/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk-ts
+      '@sefi/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+      '@sefi/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+
   apps/worker:
     dependencies:
       '@sefi/sdk':
@@ -162,8 +183,35 @@ importers:
         specifier: workspace:*
         version: link:../shared-types
 
+  packages/compute:
+    dependencies:
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
+      '@sefi/semantic-core':
+        specifier: workspace:*
+        version: link:../semantic-core
+      '@sefi/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:../source-records
+
   packages/context-capsules:
     dependencies:
+      '@sefi/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:../source-records
+
+  packages/proofs:
+    dependencies:
+      '@sefi/compute':
+        specifier: workspace:*
+        version: link:../compute
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../shared-types
@@ -239,9 +287,15 @@ importers:
 
   packages/sdk-ts:
     dependencies:
+      '@sefi/compute':
+        specifier: workspace:*
+        version: link:../compute
       '@sefi/context-capsules':
         specifier: workspace:*
         version: link:../context-capsules
+      '@sefi/proofs':
+        specifier: workspace:*
+        version: link:../proofs
       '@sefi/protocol-aquarius':
         specifier: workspace:*
         version: link:../protocol-aquarius
@@ -301,6 +355,18 @@ importers:
       pg:
         specifier: ^8.13.0
         version: 8.22.0
+
+  packages/verifier-registry-client:
+    dependencies:
+      '@sefi/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:../source-records
+      '@sefi/stellar-client':
+        specifier: workspace:*
+        version: link:../stellar-client
 
 packages:
 

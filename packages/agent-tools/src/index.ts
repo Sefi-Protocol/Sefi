@@ -190,7 +190,88 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
       },
       execute: (a) => sefi.facts().query(a),
     },
+    // ---- Phase 2 ComputeKit / ProofKit (spec §17) ----
+    {
+      name: "sefi_compute_compile",
+      description:
+        "Compile a ComputeIntent (policy DSL + context) into a compiled intent with public roots. Returns no private values.",
+      parameters: {
+        type: "object",
+        properties: { intent: { type: "object" } },
+        required: ["intent"],
+      },
+      execute: async (a) => {
+        const c = await sefi.compute().compile(a.intent);
+        return redactCompiled(c);
+      },
+    },
+    {
+      name: "sefi_compute_prove",
+      description:
+        "Prove a deterministic policy over the selected Sefi context capsule (proof-of-data-used). Returns only revealed result, public roots, and the proof card — never private inputs.",
+      parameters: {
+        type: "object",
+        properties: { intent: { type: "object" } },
+        required: ["intent"],
+      },
+      execute: async (a) => {
+        const r = await sefi.compute().prove(a.intent);
+        return {
+          proofId: r.proofEnvelope.proofId,
+          publicInputs: r.proofEnvelope.publicInputs,
+          revealed: r.proofEnvelope.revealed,
+          proofCard: r.proofCard,
+        };
+      },
+    },
+    {
+      name: "sefi_verify_local",
+      description: "Verify a Sefi proof envelope off-chain. Returns validity + reasons.",
+      parameters: {
+        type: "object",
+        properties: { proofEnvelope: { type: "object" } },
+        required: ["proofEnvelope"],
+      },
+      execute: (a) => sefi.verify().local(a.proofEnvelope),
+    },
+    {
+      name: "sefi_verify_on_stellar",
+      description:
+        "Submit/commit a proof card on Stellar. Phase 2 returns proof_card_commitment_only mode.",
+      parameters: {
+        type: "object",
+        properties: { proofEnvelope: { type: "object" } },
+        required: ["proofEnvelope"],
+      },
+      execute: (a) => sefi.verify().onStellar(a.proofEnvelope),
+    },
+    {
+      name: "sefi_proof_card_get",
+      description: "Fetch a stored proof card by proofId (public result + roots + warnings only).",
+      parameters: {
+        type: "object",
+        properties: { proofId: { type: "string" } },
+        required: ["proofId"],
+      },
+      execute: (a) => sefi.verify().proofCard(a.proofId),
+    },
   ];
+}
+
+/** Strip anything that could echo private inputs from a compiled intent. */
+function redactCompiled(c: any) {
+  return {
+    id: c.id,
+    name: c.name,
+    intentHash: c.intentHash,
+    computeHash: c.computeHash,
+    contextRoot: c.contextRoot,
+    semanticFactsRoot: c.semanticFactsRoot,
+    adapterSetHash: c.adapterSetHash,
+    reveal: c.reveal,
+    hide: c.hide,
+    privateInputNames: Object.keys(c.privateInputSchema ?? {}),
+  };
 }
 
 /** Adapt Sefi tools to Anthropic Messages API `tools` format. */

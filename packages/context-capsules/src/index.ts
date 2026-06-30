@@ -9,16 +9,52 @@ import type {
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
-import { merkleRoot, sha256Hex } from "@sefi/source-records";
+import {
+  hashSemanticFact,
+  merkleProof,
+  merkleRoot,
+  sha256Hex,
+  type MerkleProofParts,
+} from "@sefi/source-records";
 
 /** sourceRoot = merkle_root(sorted(source response hashes)) (spec §5.2). */
 export function sourceRoot(sources: SourceRecord[]): string {
   return merkleRoot(sources.map((s) => s.responseHash));
 }
 
-/** factsRoot = merkle_root(sorted(fact raw hashes)). */
+/** factsRoot = merkle_root(sorted(fact raw hashes)). v1, kept for compat. */
 export function factsRoot(facts: SemanticFact[]): string {
   return merkleRoot(facts.map((f) => f.rawHash));
+}
+
+/**
+ * Phase 2 v2 commitment: merkle_root over the canonical fact-value hashes
+ * (spec §3). Changing only a fact's `value` changes this root.
+ */
+export function semanticFactsRoot(facts: SemanticFact[]): string {
+  return merkleRoot(facts.map(hashSemanticFact));
+}
+
+/** v2 contextRoot = H(sourceRoot | semanticFactsRoot | adapterSetHash) (spec §3). */
+export function contextRootV2(roots: {
+  sourceRoot: string;
+  semanticFactsRoot: string;
+  adapterSetHash: string;
+}): string {
+  return sha256Hex(
+    `${roots.sourceRoot}|${roots.semanticFactsRoot}|${roots.adapterSetHash}`,
+  );
+}
+
+/**
+ * Merkle inclusion proof for one fact within the semanticFactsRoot tree, so a
+ * compute can bind specific facts to the context root (spec §3 / §22 PR1).
+ */
+export function factMerkleProof(
+  facts: SemanticFact[],
+  fact: SemanticFact,
+): MerkleProofParts | null {
+  return merkleProof(facts.map(hashSemanticFact), hashSemanticFact(fact));
 }
 
 /** adapterSetHash binds the exact adapter versions that produced the context. */
@@ -83,6 +119,7 @@ export async function buildAndSaveCapsule(
 export function buildCapsule(input: BuildCapsuleInput): ContextCapsule {
   const sRoot = sourceRoot(input.sourceRecords);
   const fRoot = factsRoot(input.facts);
+  const sfRoot = semanticFactsRoot(input.facts);
   const aHash = adapterSetHash(input.sourceRecords);
   const distinct = [...new Set(input.protocols)];
   return {
@@ -94,6 +131,12 @@ export function buildCapsule(input: BuildCapsuleInput): ContextCapsule {
     semanticFactIds: input.facts.map((f) => f.id),
     sourceRoot: sRoot,
     factsRoot: fRoot,
+    semanticFactsRoot: sfRoot,
+    contextRoot: contextRootV2({
+      sourceRoot: sRoot,
+      semanticFactsRoot: sfRoot,
+      adapterSetHash: aHash,
+    }),
     adapterSetHash: aHash,
     compositeRoot: compositeRoot({
       sourceRoot: sRoot,

@@ -7,10 +7,12 @@ import type {
 import type { FactQuery, SefiStore } from "@sefi/store";
 import { SefiRuntime } from "./runtime.js";
 import { ContextModule, type ComposeRequest } from "./context.js";
+import { ComputeModule, VerifyModule } from "./compute.js";
 import { reasonComposite } from "./reason.js";
 
 export type { ComposeRequest } from "./context.js";
 export { SefiRuntime } from "./runtime.js";
+export { ComputeModule, VerifyModule } from "./compute.js";
 export { reasonComposite } from "./reason.js";
 
 class BlendModule {
@@ -114,6 +116,14 @@ export class SefiClient {
   }
   facts() {
     return new FactsModule(this.rt);
+  }
+  /** Phase 2 ComputeKit (spec §17). */
+  compute() {
+    return new ComputeModule(this.rt);
+  }
+  /** Phase 2 ProofKit verification (spec §17). */
+  verify() {
+    return new VerifyModule(this.rt);
   }
 
   /** Unified multi-protocol ask (spec §13.4 / §23.4). */

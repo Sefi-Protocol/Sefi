@@ -92,10 +92,40 @@ GET  /v1/source-records/:id
 - Blend Fixed XLM-USDC pool (mainnet): `CDVQVKOY2YSXS2IC7KN6MNASSHPAO7UN2UR2ON4OI2SKMFJNVAMDX6DP`
 - Aquarius AMM router (mainnet): `CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK`
 
+## Phase 2 — ComputeKit + ProofKit
+
+Sefi can now **prove a deterministic policy was evaluated over the exact context
+capsule the SDK selected** (proof-of-data-used), returning a durable proof card.
+
+```bash
+pnpm demo:phase2        # live: capsule → compile → prove → verify → proof card
+pnpm prove:blend        # live Blend utilization policy proof
+curl -XPOST localhost:8080/v1/compute/prove -H 'content-type: application/json' -d @intent.json
+```
+
+```ts
+const proof = await sefi.compute().prove({
+  name: "blend-utilization-policy",
+  context: { blend: { poolId, include: ["reserves", "oracle"] } },
+  compute: "utilization = blend.reserve.USDC.totalBorrowed * SCALE / max(blend.reserve.USDC.totalSupplied, 1); safe = utilization < private.maxUtilization && blend.oracle.isFresh;",
+  privateInputs: { maxUtilization: "820000" },   // stays private
+  reveal: ["safe"], hide: ["maxUtilization"],
+  proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },
+});
+proof.proofCard.publicResult;   // { safe: true }
+```
+
+> Trust model: **proof-of-data-used**, not proof-of-data-origin. The off-chain
+> path is the source of truth; the Soroban verifier registry adds an optional
+> `proof_card_commitment_only` on-chain commitment — not on-chain ZK verification.
+
+See [ComputeKit + ProofKit](docs/computekit.md).
+
 ## Docs
 
 - [Architecture](docs/architecture.md)
 - [SDK](docs/sdk.md)
+- [ComputeKit + ProofKit (Phase 2)](docs/computekit.md)
 - Adapters: [Blend](docs/adapters/blend.md) · [Aquarius](docs/adapters/aquarius.md) · [SDEX](docs/adapters/sdex.md)
 - [Proof-of-Data handoff](docs/proof-of-data-handoff.md)
 

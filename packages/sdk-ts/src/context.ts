@@ -1,6 +1,9 @@
 import type {
   CompositeContext,
+  ContextCapsule,
   ProtocolContext,
+  SemanticFact,
+  SourceRecord,
 } from "@sefi/shared-types";
 import { composeContexts } from "@sefi/context-capsules";
 import type { SefiRuntime } from "./runtime.js";
@@ -33,6 +36,22 @@ export class ContextModule {
   constructor(private rt: SefiRuntime) {}
 
   async compose(req: ComposeRequest): Promise<CompositeContext> {
+    const { composite } = await this.build(req);
+    return composite;
+  }
+
+  /**
+   * Build a composite context AND return the underlying capsule + facts +
+   * sources. Used by the compute pipeline (which needs the capsule object with
+   * its v2 roots), and by compose() which only needs the composite view.
+   */
+  async build(req: ComposeRequest): Promise<{
+    composite: CompositeContext;
+    capsule: ContextCapsule;
+    facts: SemanticFact[];
+    sourceRecords: SourceRecord[];
+    warnings: string[];
+  }> {
     const contexts: ProtocolContext[] = [];
     const warnings: string[] = [];
 
@@ -68,7 +87,13 @@ export class ContextModule {
       contexts,
     );
     await this.rt.store.saveCapsule(capsule);
-    return { ...composite, capsuleId: capsule.id };
+    return {
+      composite: { ...composite, capsuleId: capsule.id },
+      capsule,
+      facts: composite.facts,
+      sourceRecords: composite.sourceRecords,
+      warnings,
+    };
   }
 
   /** Collected warnings helper for the unified ask(). */

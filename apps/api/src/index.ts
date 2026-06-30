@@ -14,11 +14,13 @@ const NETWORK = (process.env.SEFI_NETWORK ?? "mainnet") as Network;
 async function bootstrap() {
   const databaseUrl = process.env.DATABASE_URL;
   if (databaseUrl) {
-    const sql = readFileSync(
-      resolve(__dirname, "../../../services/postgres/migrations/0001_init.sql"),
-      "utf8",
-    );
-    await runMigrations(databaseUrl, sql);
+    for (const file of ["0001_init.sql", "0002_compute_proofs.sql"]) {
+      const sql = readFileSync(
+        resolve(__dirname, `../../../services/postgres/migrations/${file}`),
+        "utf8",
+      );
+      await runMigrations(databaseUrl, sql);
+    }
     // eslint-disable-next-line no-console
     console.log("[api] migrations applied");
   }
@@ -114,6 +116,55 @@ async function bootstrap() {
   app.post(
     "/v1/facts/query",
     wrap((req) => sefi.facts().query(req.body)),
+  );
+
+  // ---- Phase 2: compute / proofs (spec §16). Private inputs are never echoed.
+  app.post(
+    "/v1/compute/compile",
+    wrap(async (req) => {
+      const compiled = await sefi.compute().compile(req.body);
+      return compiled; // contains no private values by construction
+    }),
+  );
+  app.post(
+    "/v1/compute/evaluate",
+    wrap(async (req) => {
+      const { compiled, evaluation } = await sefi.compute().evaluate(req.body);
+      return {
+        intentId: compiled.id,
+        computeHash: compiled.computeHash,
+        contextRoot: compiled.contextRoot,
+        revealed: evaluation.revealed,
+        resultHash: evaluation.resultHash,
+      };
+    }),
+  );
+  app.post(
+    "/v1/compute/prove",
+    wrap(async (req) => {
+      const result = await sefi.compute().prove(req.body);
+      return { proofEnvelope: result.proofEnvelope, proofCard: result.proofCard };
+    }),
+  );
+  app.get(
+    "/v1/compute/intents/:id",
+    wrap(async (req) => (await store.getComputeIntent(req.params.id)) ?? { error: "not found" }),
+  );
+  app.post(
+    "/v1/proofs/verify-local",
+    wrap((req) => sefi.verify().local(req.body.proofEnvelope ?? req.body)),
+  );
+  app.post(
+    "/v1/proofs/verify-on-stellar",
+    wrap((req) => sefi.verify().onStellar(req.body.proofEnvelope ?? req.body)),
+  );
+  app.get(
+    "/v1/proofs/:id",
+    wrap(async (req) => (await store.getProofEnvelope(req.params.id)) ?? { error: "not found" }),
+  );
+  app.get(
+    "/v1/proofs/:id/card",
+    wrap(async (req) => (await store.getProofCard(req.params.id)) ?? { error: "not found" }),
   );
 
   // ---- lookups + replay ----

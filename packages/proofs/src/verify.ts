@@ -1,0 +1,69 @@
+import type { CompiledComputeIntent, ProofEnvelope } from "@sefi/shared-types";
+import { sha256Hex, stableStringify } from "@sefi/source-records";
+import { getBackend } from "./router.js";
+
+const HEX32 = /^0x[0-9a-f]{64}$/;
+
+export interface VerifyResult {
+  valid: boolean;
+  reasons: string[];
+}
+
+/**
+ * Local proof verification (spec §14). Validates envelope schema, hash formats,
+ * the backend checksum, and — when the compiled intent is supplied — that the
+ * envelope's computeHash and resultHash bind to it. Never returns true merely
+ * because the envelope exists.
+ */
+export async function verifyLocal(
+  envelope: ProofEnvelope,
+  compiled?: CompiledComputeIntent,
+): Promise<VerifyResult> {
+  const reasons: string[] = [];
+  const pi = envelope.publicInputs;
+
+  if (!pi) reasons.push("missing publicInputs");
+  else {
+    for (const field of [
+      "contextRoot",
+      "sourceRoot",
+      "semanticFactsRoot",
+      "adapterSetHash",
+      "computeHash",
+      "resultHash",
+    ] as const) {
+      if (!HEX32.test(String(pi[field] ?? "")))
+        reasons.push(`publicInputs.${field} is not a 0x 32-byte hash`);
+    }
+  }
+
+  if (!envelope.proofBytes) reasons.push("missing proofBytes");
+
+  // resultHash must match the revealed result it claims to commit to.
+  if (pi) {
+    const recomputed = sha256Hex(
+      stableStringify({ schemaVersion: "sefi.compute_result.v1", reveal: envelope.revealed }),
+    );
+    if (recomputed !== pi.resultHash)
+      reasons.push("resultHash does not match revealed result");
+  }
+
+  // Optional binding to the compiled intent.
+  if (compiled && pi) {
+    if (compiled.computeHash !== pi.computeHash)
+      reasons.push("computeHash does not match compiled intent");
+    if (compiled.contextRoot !== pi.contextRoot)
+      reasons.push("contextRoot does not match compiled intent");
+  }
+
+  // Backend checksum / proof artifact must validate.
+  try {
+    const backend = getBackend(envelope.backend);
+    const ok = await backend.verifyLocal(envelope);
+    if (!ok) reasons.push(`${envelope.backend} proof artifact failed verification`);
+  } catch (e) {
+    reasons.push(`backend verify error: ${(e as Error).message}`);
+  }
+
+  return { valid: reasons.length === 0, reasons };
+}

@@ -1,5 +1,8 @@
 import type {
+  CompiledComputeIntent,
   ContextCapsule,
+  ProofCard,
+  ProofEnvelope,
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
@@ -34,6 +37,14 @@ export interface SefiStore {
 
   /** Delete capsules created before `beforeIso`; returns count removed (cleanup worker). */
   deleteCapsulesOlderThan(beforeIso: string): Promise<number>;
+
+  // Phase 2 — compute / proof persistence (spec §18).
+  saveComputeIntent(intent: CompiledComputeIntent): Promise<void>;
+  getComputeIntent(id: string): Promise<CompiledComputeIntent | null>;
+  saveProofEnvelope(envelope: ProofEnvelope, computeIntentId?: string): Promise<void>;
+  getProofEnvelope(id: string): Promise<ProofEnvelope | null>;
+  saveProofCard(card: ProofCard, proofEnvelopeId: string): Promise<void>;
+  getProofCard(proofId: string): Promise<ProofCard | null>;
 
   init?(): Promise<void>;
   close?(): Promise<void>;

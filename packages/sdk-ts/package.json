@@ -16,6 +16,8 @@
     "@sefi/stellar-client": "workspace:*",
     "@sefi/protocol-blend": "workspace:*",
     "@sefi/protocol-aquarius": "workspace:*",
-    "@sefi/protocol-sdex": "workspace:*"
+    "@sefi/protocol-sdex": "workspace:*",
+    "@sefi/compute": "workspace:*",
+    "@sefi/proofs": "workspace:*"
   }
 }

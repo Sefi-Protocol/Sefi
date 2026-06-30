@@ -110,11 +110,170 @@ export interface ContextCapsule {
   factsRoot: string;
   adapterSetHash: string;
   compositeRoot: string;
+  /** Phase 2 v2 commitments (spec §3). Bind exact fact values to the context. */
+  semanticFactsRoot?: string;
+  contextRoot?: string;
   ledgerRange?: {
     minLedger?: number;
     maxLedger?: number;
   };
   createdAt: string;
+}
+
+export type HexString = `0x${string}`;
+
+// ---------------------------------------------------------------------------
+// Phase 2 — ComputeKit / ProofKit (spec §4)
+// ---------------------------------------------------------------------------
+
+export type SefiScalarType =
+  | "u64"
+  | "u128"
+  | "i128"
+  | "fixed_1e6"
+  | "bool"
+  | "enum";
+
+export type ProofBackendId = "noir" | "risc0" | "prebuilt" | "local-dev";
+
+export interface ComputeIntent {
+  id?: string;
+  name: string;
+  context: Record<string, unknown>;
+  compute: string | ExpressionAst;
+  privateInputs: Record<string, string | number | boolean>;
+  reveal: string[];
+  hide: string[];
+  proof: {
+    backend: "auto" | ProofBackendId;
+    verifyOn: "stellar" | "offchain";
+    proveDataUsed: boolean;
+  };
+  /** Optional freshness policy: reject facts older than this (seconds). */
+  maxAgeSeconds?: number;
+}
+
+export type ExpressionAst = {
+  type: "program";
+  statements: AssignmentNode[];
+};
+
+export interface AssignmentNode {
+  type: "assignment";
+  name: string;
+  expr: ExprNode;
+}
+
+export type ExprNode =
+  | { type: "literal"; value: string | number | boolean }
+  | { type: "private"; name: string }
+  | { type: "fact"; path: string[] }
+  | { type: "identifier"; name: string }
+  | {
+      type: "binary";
+      op: "+" | "-" | "*" | "/" | "<" | "<=" | ">" | ">=" | "==" | "!=" | "&&" | "||";
+      left: ExprNode;
+      right: ExprNode;
+    }
+  | { type: "unary"; op: "!" | "-"; expr: ExprNode }
+  | { type: "call"; fn: "max" | "min" | "any" | "all"; args: ExprNode[] };
+
+export interface MerkleProof {
+  leaf: HexString;
+  leafIndex: number;
+  siblings: HexString[];
+  root: HexString;
+}
+
+export interface FactBinding {
+  variable: string;
+  protocol: Protocol;
+  entityType: string;
+  entitySelector: Record<string, string>;
+  field: string;
+  valueType: SefiScalarType;
+  factId: string;
+  factHash: HexString;
+  merkleProof?: MerkleProof;
+}
+
+export interface CompiledComputeIntent {
+  id: string;
+  name: string;
+  intentHash: HexString;
+  computeHash: HexString;
+  contextRoot: HexString;
+  sourceRoot: HexString;
+  semanticFactsRoot: HexString;
+  adapterSetHash: HexString;
+  ast: ExpressionAst;
+  factRefs: FactBinding[];
+  privateInputSchema: Record<string, SefiScalarType>;
+  reveal: string[];
+  hide: string[];
+  capsuleId: string;
+  createdAt: string;
+}
+
+export interface ComputeEvaluation {
+  outputs: Record<string, string | boolean>;
+  revealed: Record<string, string | number | boolean>;
+  hiddenUsed: string[];
+  factBindings: FactBinding[];
+  resultHash: HexString;
+}
+
+export interface ProofPublicInputs {
+  contextRoot: HexString;
+  sourceRoot: HexString;
+  semanticFactsRoot: HexString;
+  adapterSetHash: HexString;
+  computeHash: HexString;
+  resultHash: HexString;
+}
+
+export interface ProofEnvelope {
+  proofId: string;
+  proofType: "compute_intent" | "proof_of_funds" | "allowlist" | "credential";
+  backend: ProofBackendId;
+  publicInputs: ProofPublicInputs;
+  revealed: Record<string, string | number | boolean>;
+  proofBytes: string;
+  verifierContractId?: string;
+  verificationTx?: string;
+  status: "created" | "proving" | "verified" | "failed";
+  createdAt: string;
+}
+
+export interface ProofCard {
+  proofId: string;
+  proofType: string;
+  contextRoot: HexString;
+  computeHash: HexString;
+  publicResultHash: HexString;
+  publicResult: Record<string, string | number | boolean>;
+  verifierHash?: HexString;
+  timestampLedger?: number;
+  result: "verified" | "failed";
+  trustModel: "proof-of-data-used" | "proof-of-data-origin";
+  verificationMode?: "offchain_local" | "proof_card_commitment_only" | "stellar_verified";
+  warnings: string[];
+}
+
+export interface ProveResult {
+  proofEnvelope: ProofEnvelope;
+  proofCard: ProofCard;
+  publicInputs: ProofPublicInputs;
+}
+
+export interface ProofJob {
+  id: string;
+  intentId: string;
+  backend: ProofBackendId;
+  status: "queued" | "running" | "verified" | "failed";
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**

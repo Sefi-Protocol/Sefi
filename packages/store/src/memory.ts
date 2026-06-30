@@ -1,5 +1,8 @@
 import type {
+  CompiledComputeIntent,
   ContextCapsule,
+  ProofCard,
+  ProofEnvelope,
   SemanticFact,
   SourceRecord,
 } from "@sefi/shared-types";
@@ -14,6 +17,9 @@ export class MemoryStore implements SefiStore {
   private sources = new Map<string, SourceRecord>();
   private facts = new Map<string, SemanticFact>();
   private capsules = new Map<string, ContextCapsule>();
+  private intents = new Map<string, CompiledComputeIntent>();
+  private envelopes = new Map<string, ProofEnvelope>();
+  private cards = new Map<string, ProofCard>();
 
   async saveSourceRecords(records: SourceRecord[]): Promise<void> {
     for (const r of records) this.sources.set(r.id, r);
@@ -71,5 +77,24 @@ export class MemoryStore implements SefiStore {
       }
     }
     return n;
+  }
+
+  async saveComputeIntent(intent: CompiledComputeIntent): Promise<void> {
+    this.intents.set(intent.id, intent);
+  }
+  async getComputeIntent(id: string): Promise<CompiledComputeIntent | null> {
+    return this.intents.get(id) ?? null;
+  }
+  async saveProofEnvelope(envelope: ProofEnvelope): Promise<void> {
+    this.envelopes.set(envelope.proofId, envelope);
+  }
+  async getProofEnvelope(id: string): Promise<ProofEnvelope | null> {
+    return this.envelopes.get(id) ?? null;
+  }
+  async saveProofCard(card: ProofCard): Promise<void> {
+    this.cards.set(card.proofId, card);
+  }
+  async getProofCard(proofId: string): Promise<ProofCard | null> {
+    return this.cards.get(proofId) ?? null;
   }
 }

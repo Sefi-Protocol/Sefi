@@ -1,0 +1,21 @@
+[package]
+name = "sefi-verifier-registry"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "21"
+
+[dev-dependencies]
+soroban-sdk = { version = "21", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true
