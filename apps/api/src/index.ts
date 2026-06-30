@@ -151,6 +151,18 @@ async function bootstrap() {
       return { proofEnvelope: result.proofEnvelope, proofCard: result.proofCard };
     }),
   );
+  // BN254 proving alias (audit Part I): forces the real bn254-noir backend.
+  app.post(
+    "/v1/compute/prove-bn254",
+    wrap(async (req) => {
+      const intent = {
+        ...req.body,
+        proof: { ...(req.body.proof ?? {}), backend: "bn254-noir" as const },
+      };
+      const result = await sefi.compute().prove(intent);
+      return { proofEnvelope: result.proofEnvelope, proofCard: result.proofCard };
+    }),
+  );
   app.get(
     "/v1/compute/intents/:id",
     wrap(async (req) => (await store.getComputeIntent(req.params.id)) ?? { error: "not found" }),

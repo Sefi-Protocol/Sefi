@@ -176,12 +176,27 @@ importers:
 
   packages/agent-tools:
     dependencies:
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
+      '@sefi/proofs':
+        specifier: workspace:*
+        version: link:../proofs
       '@sefi/sdk':
         specifier: workspace:*
         version: link:../sdk-ts
+      '@sefi/semantic-core':
+        specifier: workspace:*
+        version: link:../semantic-core
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      '@sefi/source-records':
+        specifier: workspace:*
+        version: link:../source-records
+      '@sefi/store':
+        specifier: workspace:*
+        version: link:../store
 
   packages/compute:
     dependencies:

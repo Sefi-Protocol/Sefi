@@ -31,7 +31,8 @@ function intent(capsuleId: string): ComputeIntent {
     privateInputs: { maxUtilization: "0.82" },
     privateInputSchema: { maxUtilization: "fixed_1e6" },
     reveal: ["safe"], hide: ["maxUtilization"],
-    proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },
+    // Deterministic backend for verification tests (no toolchain needed).
+    proof: { backend: "prebuilt", verifyOn: "offchain", proveDataUsed: true },
   };
 }
 

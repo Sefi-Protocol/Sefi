@@ -30,10 +30,11 @@ async function main() {
     name: "blend-utilization-policy",
     context: { blend: { poolId: POOL, include: ["reserves", "oracle"] } },
     compute: RECIPES["blend-utilization-policy"],
-    privateInputs: { maxUtilization: "820000" },
+    privateInputs: { maxUtilization: "0.82" },
+    privateInputSchema: { maxUtilization: "fixed_1e6" as const },
     reveal: ["safe"],
     hide: ["maxUtilization"],
-    proof: { backend: "auto" as const, verifyOn: "offchain" as const, proveDataUsed: true },
+    proof: { backend: "prebuilt" as const, verifyOn: "offchain" as const, proveDataUsed: true },
   };
   const compiled = await sefi.compute().compile(blendIntent);
 
@@ -73,7 +74,7 @@ async function main() {
       privateInputs: { minHealth: "1.25", minReceive: "1" },
       reveal: ["allowed"],
       hide: ["minHealth", "minReceive"],
-      proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },
+      proof: { backend: "prebuilt", verifyOn: "offchain", proveDataUsed: true },
     });
     const v2 = await verifyLocal(comp.proofEnvelope);
     if (!v2.valid) throw new Error("composite verify failed");

@@ -12,10 +12,11 @@ async function main() {
     name: "blend-utilization-policy",
     context: { blend: { poolId: POOL, include: ["reserves", "oracle"] } },
     compute: RECIPES["blend-utilization-policy"],
-    privateInputs: { maxUtilization: "820000" }, // 0.82, kept private
+    privateInputs: { maxUtilization: "0.82" }, // decimal ratio, kept private
+    privateInputSchema: { maxUtilization: "fixed_1e6" },
     reveal: ["safe"],
     hide: ["maxUtilization"],
-    proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },
+    proof: { backend: "prebuilt", verifyOn: "offchain", proveDataUsed: true },
   });
   console.log("proofId        :", proofEnvelope.proofId);
   console.log("backend        :", proofEnvelope.backend);

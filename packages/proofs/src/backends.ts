@@ -129,6 +129,27 @@ export class NoirBackend implements ProofBackend {
   }
 }
 
+/**
+ * BN254-Noir backend (audit Part F/H): generates a REAL Noir/UltraHonk proof via
+ * `nargo` + `bb`. Requires the toolchain; throws an explicit, non-fallback error
+ * when unavailable so production never silently downgrades. Proving/verifying is
+ * delegated to ./bn254.ts which shells out to the toolchain.
+ */
+export class Bn254NoirBackend implements ProofBackend {
+  id = "bn254-noir" as const;
+  supports(compiled: CompiledComputeIntent): boolean {
+    return isSmallArithmeticPolicy(compiled.ast) && isPrebuiltRecipe(compiled.name);
+  }
+  async prove(input: ProofRequest): Promise<ProofEnvelope> {
+    const { proveBn254 } = await import("./bn254.js");
+    return proveBn254(input);
+  }
+  async verifyLocal(envelope: ProofEnvelope): Promise<boolean> {
+    const { verifyBn254Local } = await import("./bn254.js");
+    return verifyBn254Local(envelope);
+  }
+}
+
 /** RISC Zero backend — interface only for Phase 2 (spec §11). */
 export class Risc0Backend implements ProofBackend {
   id = "risc0" as const;

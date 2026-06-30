@@ -139,7 +139,7 @@ export type SefiScalarType =
   | "bool"
   | "enum";
 
-export type ProofBackendId = "noir" | "risc0" | "prebuilt" | "local-dev";
+export type ProofBackendId = "bn254-noir" | "noir" | "risc0" | "prebuilt" | "local-dev";
 
 export interface ComputeIntent {
   id?: string;

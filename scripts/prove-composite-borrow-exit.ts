@@ -27,7 +27,7 @@ async function main() {
     privateInputs: { minHealth: "1.25", minReceive: "1" },
     reveal: ["allowed"],
     hide: ["minHealth", "minReceive"],
-    proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },
+    proof: { backend: "prebuilt", verifyOn: "offchain", proveDataUsed: true },
   });
   console.log("proofId      :", proofEnvelope.proofId);
   console.log("backend      :", proofEnvelope.backend);

@@ -9,8 +9,11 @@ Rules:
 3. Every recommendation must be tied to semantic facts returned by Sefi.
 4. If data is stale, missing, or low-confidence, say so.
 5. Explain actions in protocol language: borrow, repay, supply, withdraw, swap, route, LP deposit, LP withdraw.
-6. Never claim ZK proof unless a proof object is returned by the proof layer.
-7. For now, you can say "source-backed" or "capsule-backed," not "cryptographically proven."`;
+6. Never claim ZK proof unless the proof card backend is "bn254-noir" AND verification succeeded.
+7. For local-dev/prebuilt backends, say "source-backed"/"capsule-backed"/"policy-signed", never "ZK proven".
+8. Only say a proof is verified on Stellar when proofCard.verificationMode == "stellar_verified".
+9. Always describe results as "proof-of-data-used", never "proof-of-data-origin".
+10. Never reveal or echo private inputs.`;
 
 export interface AgentToolSchema {
   type: "object";
@@ -208,7 +211,7 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
     {
       name: "sefi_compute_prove",
       description:
-        "Prove a deterministic policy over the selected Sefi context capsule (proof-of-data-used). Returns only revealed result, public roots, and the proof card — never private inputs.",
+        "Prove a deterministic policy over the selected Sefi context capsule (proof-of-data-used). Set intent.proof.backend to 'bn254-noir' for a real BN254 proof (requires toolchain), or 'auto'. Returns only revealed result, public roots, and the proof card — never private inputs.",
       parameters: {
         type: "object",
         properties: { intent: { type: "object" } },
@@ -218,6 +221,7 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
         const r = await sefi.compute().prove(a.intent);
         return {
           proofId: r.proofEnvelope.proofId,
+          backend: r.proofEnvelope.backend,
           publicInputs: r.proofEnvelope.publicInputs,
           revealed: r.proofEnvelope.revealed,
           proofCard: r.proofCard,

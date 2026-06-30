@@ -9,6 +9,11 @@
   },
   "dependencies": {
     "@sefi/shared-types": "workspace:*",
-    "@sefi/sdk": "workspace:*"
+    "@sefi/sdk": "workspace:*",
+    "@sefi/source-records": "workspace:*",
+    "@sefi/semantic-core": "workspace:*",
+    "@sefi/context-capsules": "workspace:*",
+    "@sefi/store": "workspace:*",
+    "@sefi/proofs": "workspace:*"
   }
 }
