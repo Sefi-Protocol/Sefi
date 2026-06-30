@@ -119,7 +119,26 @@ proof.proofCard.publicResult;   // { safe: true }
 > path is the source of truth; the Soroban verifier registry adds an optional
 > `proof_card_commitment_only` on-chain commitment — not on-chain ZK verification.
 
-See [ComputeKit + ProofKit](docs/computekit.md).
+### Real BN254 proof path (Noir + Soroban)
+
+Sefi ships real BN254 Noir circuits (`circuits/`) and Soroban verifier contracts
+(`contracts/`) **deployed live on Stellar testnet**:
+
+| Contract | Testnet ID |
+|---|---|
+| verifier (`noir_ultrahonk_verifier`) | `CC2HYEYVFQ6RH6NECDRJWKJBN4XP3XBGXPG4XNAQLGP4KA6PCFL7HGDN` |
+| registry (`sefi_verifier_registry`) | `CBAYTGH524MS6WILWGUB5LLOQO3JCRHO77NP6OVQAJUMX5J4O3GR4UWT` |
+
+```bash
+pnpm contracts:test            # cargo test incl. real BN254 g1 identities
+pnpm deploy:verifier:testnet   # deploy + on-chain BN254 smoke (auto-funds a key)
+pnpm zk:test                   # nargo circuit checks (skips without the toolchain)
+```
+
+Key env vars: `SEFI_PROOF_BACKEND=bn254-noir`, `SEFI_NOIR_NARGO_PATH`,
+`SEFI_NOIR_BB_PATH`, `SEFI_VERIFIER_CONTRACT_ID`, `SEFI_REGISTRY_CONTRACT_ID`,
+`STELLAR_TESTNET_SECRET`, `SEFI_REQUIRE_BN254=1`. See
+[ComputeKit + ProofKit](docs/computekit.md) and [BN254 / ZK](docs/zk-bn254.md).
 
 ## Docs
 
