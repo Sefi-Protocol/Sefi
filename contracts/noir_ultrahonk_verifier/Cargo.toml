@@ -1,0 +1,27 @@
+[package]
+name = "noir_ultrahonk_verifier"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Provenance: this is an original Sefi BN254 pairing-check verifier contract
+# (Groth16-style verification equation) built directly on Soroban's BN254 host
+# functions (env.crypto().bn254()). It is NOT a vendored UltraHonk verifier.
+# Wiring bb's exact UltraHonk verification key requires the bb-generated verifier
+# artifact; see docs/zk-bn254.md for how to swap that in. Licensed MIT.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "25"
+
+[dev-dependencies]
+soroban-sdk = { version = "25", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true

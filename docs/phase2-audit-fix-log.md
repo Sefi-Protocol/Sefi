@@ -58,3 +58,19 @@ REQUIRE_NOIR=1 pnpm zk:test
 ## Change log
 
 (entries appended per part below as fixes land)
+
+## Part G — live testnet deployment
+
+Deployed to Stellar **testnet** (Protocol 25+, BN254 host functions) with
+soroban-sdk 25 + rustc 1.96 (rustup) + stellar CLI 27.0.0.
+
+- Deployer: `GAUTESFW2APS3ZUE4J5Y7EA26UPMQKHCWRWF5D4YGQLKFSUJZVJNW6TV`
+- **Verifier contract** (`noir_ultrahonk_verifier`): `CC2HYEYVFQ6RH6NECDRJWKJBN4XP3XBGXPG4XNAQLGP4KA6PCFL7HGDN`
+- **Registry contract** (`sefi_verifier_registry`): `CBAYTGH524MS6WILWGUB5LLOQO3JCRHO77NP6OVQAJUMX5J4O3GR4UWT`
+
+On-chain checks (real testnet):
+- `bn254_smoke_g1_double` → `true` (G + G == 2*G via host BN254)
+- `bn254_smoke_g1_triple` → `true` (3*G == G + 2*G)
+- `emit_proof_card` committed; `get_card` returns the committed context root.
+
+Reproduce: `pnpm deploy:verifier:testnet` (auto-generates + funds a key if none set).

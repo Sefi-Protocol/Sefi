@@ -1,0 +1,8 @@
+[package]
+name = "aquarius_route_policy"
+type = "bin"
+authors = ["Sefi"]
+compiler_version = ">=0.30.0"
+
+[dependencies]
+sefi_shared = { path = "../shared" }

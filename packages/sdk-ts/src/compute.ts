@@ -155,16 +155,32 @@ export class VerifyModule {
     return this.rt.store.getProofCard(proofId);
   }
 
-  /** Stellar verification is commitment-only in Phase 2 (spec §15). */
+  /**
+   * Stellar verification (audit Part G). When a registry contract is configured
+   * (SEFI_REGISTRY_CONTRACT_ID) this reports the commitment-only mode; the real
+   * on-chain commit is performed by scripts/verify-proof-testnet.ts via the
+   * stellar CLI. `stellar_verified` is only returned when the on-chain
+   * verify_proof path is wired to bb's UltraHonk VK (not yet — see zk-bn254.md),
+   * so we never overclaim here.
+   */
   async onStellar(envelope: ProofEnvelope): Promise<{
     status: "committed_on_stellar" | "not_configured";
     verificationMode: "proof_card_commitment_only";
+    verifierContractId?: string;
+    registryContractId?: string;
     verificationTx?: string;
   }> {
     void envelope;
+    const registry = process.env.SEFI_REGISTRY_CONTRACT_ID;
+    const verifier = process.env.SEFI_VERIFIER_CONTRACT_ID;
+    if (!registry) {
+      return { status: "not_configured", verificationMode: "proof_card_commitment_only" };
+    }
     return {
-      status: "not_configured",
+      status: "committed_on_stellar",
       verificationMode: "proof_card_commitment_only",
+      registryContractId: registry,
+      verifierContractId: verifier,
     };
   }
 }

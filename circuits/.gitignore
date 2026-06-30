@@ -1,0 +1,7 @@
+# Noir/bb build + witness artifacts must not be committed (audit Part F §12.2).
+*/target/
+*/Prover.toml
+*/proofs/
+*/*.gz
+*/vk
+*/proof
