@@ -199,6 +199,8 @@ export function compileIntent(input: CompileInput): CompiledComputeIntent {
     sourceRoot: capsule.sourceRoot as HexString,
     semanticFactsRoot: (capsule.semanticFactsRoot ?? capsule.factsRoot) as HexString,
     adapterSetHash: capsule.adapterSetHash as HexString,
+    zkFactsRoot: capsule.zkFactsRoot as HexString | undefined,
+    zkContextRoot: capsule.zkContextRoot as HexString | undefined,
     ast,
     factRefs,
     privateInputSchema,

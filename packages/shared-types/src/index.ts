@@ -214,6 +214,9 @@ export interface CompiledComputeIntent {
   sourceRoot: HexString;
   semanticFactsRoot: HexString;
   adapterSetHash: HexString;
+  /** ZK-friendly (BN254/Poseidon) roots carried for in-circuit verification. */
+  zkFactsRoot?: HexString;
+  zkContextRoot?: HexString;
   ast: ExpressionAst;
   factRefs: FactBinding[];
   privateInputSchema: Record<string, SefiScalarType>;
@@ -238,6 +241,9 @@ export interface ProofPublicInputs {
   adapterSetHash: HexString;
   computeHash: HexString;
   resultHash: HexString;
+  /** ZK roots used by the Noir/BN254 circuit (present for bn254-noir-capable capsules). */
+  zkFactsRoot?: HexString;
+  zkContextRoot?: HexString;
 }
 
 export interface ProofEnvelope {

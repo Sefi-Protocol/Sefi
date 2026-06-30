@@ -38,6 +38,8 @@ export function buildProofEnvelope(input: {
       adapterSetHash: input.compiled.adapterSetHash,
       computeHash: input.compiled.computeHash,
       resultHash: input.evaluation.resultHash,
+      zkFactsRoot: input.compiled.zkFactsRoot,
+      zkContextRoot: input.compiled.zkContextRoot,
     },
     revealed: serializeRevealed(input.evaluation.revealed),
     proofBytes: input.proofBytes,

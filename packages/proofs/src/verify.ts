@@ -35,6 +35,14 @@ export async function verifyLocal(
       if (!HEX32.test(String(pi[field] ?? "")))
         reasons.push(`publicInputs.${field} is not a 0x 32-byte hash`);
     }
+    // ZK roots are optional but, when present, must be well-formed.
+    for (const field of ["zkFactsRoot", "zkContextRoot"] as const) {
+      if (pi[field] !== undefined && !HEX32.test(String(pi[field])))
+        reasons.push(`publicInputs.${field} is not a 0x 32-byte hash`);
+    }
+    // bn254-noir proofs MUST carry the ZK roots the circuit binds.
+    if (envelope.backend === "bn254-noir" && (!pi.zkFactsRoot || !pi.zkContextRoot))
+      reasons.push("bn254-noir envelope is missing zkFactsRoot/zkContextRoot public inputs");
   }
 
   if (!envelope.proofBytes) reasons.push("missing proofBytes");

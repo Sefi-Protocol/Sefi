@@ -227,6 +227,12 @@ importers:
       '@sefi/compute':
         specifier: workspace:*
         version: link:../compute
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
+      '@sefi/semantic-core':
+        specifier: workspace:*
+        version: link:../semantic-core
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../shared-types

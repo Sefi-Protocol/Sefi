@@ -11,13 +11,24 @@ publish = false
 # artifact; see docs/zk-bn254.md for how to swap that in. Licensed MIT.
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "25"
 
 [dev-dependencies]
 soroban-sdk = { version = "25", features = ["testutils"] }
+# Real Groth16/BN254 proof generation for the verify_proof integration test.
+# arkworks is the same curve backend Soroban's BN254 host uses, so a proof
+# generated here verifies on-chain byte-for-byte (EIP-197 serialization).
+ark-bn254 = "0.4"
+ark-groth16 = { version = "0.4", default-features = false }
+ark-snark = "0.4"
+ark-relations = "0.4"
+ark-ff = "0.4"
+ark-ec = "0.4"
+ark-std = "0.4"
+ark-serialize = "0.4"
 
 [profile.release]
 opt-level = "z"

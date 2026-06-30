@@ -111,18 +111,37 @@ Tracks the BN254 hardening work for `Sefi-Protocol/Sefi`.
 ## Live testnet contract IDs
 - Network: Stellar **testnet** (Protocol 25+).
 - Deployer: `GAUTESFW2APS3ZUE4J5Y7EA26UPMQKHCWRWF5D4YGQLKFSUJZVJNW6TV`.
-- Verifier (`noir_ultrahonk_verifier`): `CC2HYEYVFQ6RH6NECDRJWKJBN4XP3XBGXPG4XNAQLGP4KA6PCFL7HGDN`
+- Verifier (`noir_ultrahonk_verifier`): `CB3RIXWBHZLDTKYUX2EV3AKGQ73B4WRFPEATULLCMHLPXOINFSGBO5XZ`
 - Registry (`sefi_verifier_registry`): `CBAYTGH524MS6WILWGUB5LLOQO3JCRHO77NP6OVQAJUMX5J4O3GR4UWT`
 - On-chain: `bn254_smoke_g1_double` / `_triple` → `true`; `emit_proof_card`
   committed; `get_card` returns the context root.
 
+## Follow-up fixes (witness, zk roots, real on-chain verification)
+- BN254 witness generation is complete: `packages/proofs/src/witness.ts` writes
+  every circuit input (public roots + per-fact value/pathId/adapter/ledger +
+  full Poseidon Merkle path/bits + thresholds), validated by a TS reference
+  circuit (`witness.test.ts`, 7 tests incl. tamper detection).
+- `zkFactsRoot` is now a fixed-depth (8) Poseidon tree matching the circuit's
+  `verify_merkle_path`; `factValueToFr` commits ratio fields as 1e6 so the leaf
+  value equals the predicate input.
+- ProofEnvelope `publicInputs` now include `zkFactsRoot` + `zkContextRoot`;
+  `verifyLocal` requires them for `bn254-noir`.
+- `noir_ultrahonk_verifier.verify_proof` is a REAL Groth16 BN254 verifier:
+  `cargo test groth16_test` proves a genuine ark-groth16 proof verifies (true)
+  and a wrong input fails (false). LIVE on testnet: verifier
+  `CB3RIXWBHZLDTKYUX2EV3AKGQ73B4WRFPEATULLCMHLPXOINFSGBO5XZ`, tx
+  `fbccaba320188490de79991b7e73ae8cae414a3565c4642c12c32f1feb1e4384`.
+- `sefi.verify().onStellarGroth16(...)` returns `stellar_verified` for a real
+  on-chain pass. Scripts: `pnpm zk:testnet`, `prove:blend:bn254`,
+  `prove:composite:bn254`, `verify:proof:bn254`, `zk:localnet`.
+
 ## Remaining honest limitations
-- The Soroban `verify_proof` is a real BN254 pairing verifier but is not yet
-  wired to bb's exact UltraHonk VK, so the on-chain mode is
-  `proof_card_commitment_only` (not `stellar_verified`). Wiring the bb VK is the
-  next step (docs/zk-bn254.md).
+- The on-chain verifier checks **Groth16**; the compute backend produces an
+  **UltraHonk** proof. Until bb's UltraHonk VK is wired into a verifier contract,
+  an SDK compute proof is committed-only on-chain — the Groth16 path is genuinely
+  `stellar_verified`.
 - Trust model remains **proof-of-data-used**, never proof-of-data-origin.
-- Noir prove/verify runs only where `nargo`/`bb` are installed.
+- Noir nargo/bb prove/verify runs only where the toolchain is installed.
 
 ## Sample proof card (private values redacted)
 ```json

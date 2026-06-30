@@ -74,3 +74,29 @@ On-chain checks (real testnet):
 - `emit_proof_card` committed; `get_card` returns the committed context root.
 
 Reproduce: `pnpm deploy:verifier:testnet` (auto-generates + funds a key if none set).
+
+## Follow-up — real on-chain BN254 Groth16 verification (testnet)
+
+Witness generation completed (every circuit input + Poseidon Merkle paths) and
+validated by a TS reference circuit (packages/proofs/src/witness.ts + tests).
+ProofEnvelope public inputs now include zkFactsRoot + zkContextRoot.
+
+The verifier was upgraded to a real Groth16 BN254 verifier and proven to verify
+genuine proofs (not a stub):
+
+- cargo test `groth16_test::verify_real_groth16_proof_on_chain`: an ark-groth16
+  proof verifies in the Soroban host (true), wrong public input returns false.
+- LIVE on Stellar **testnet**:
+  - Verifier contract: `CB3RIXWBHZLDTKYUX2EV3AKGQ73B4WRFPEATULLCMHLPXOINFSGBO5XZ`
+  - `verify_proof` (valid proof + correct public input) -> **true**
+  - `verify_proof` (wrong public input) -> **false**
+  - on-ledger tx: `fbccaba320188490de79991b7e73ae8cae414a3565c4642c12c32f1feb1e4384`
+  - SDK `verify().onStellarGroth16(...)` returns verificationMode "stellar_verified".
+
+Reproduce: `pnpm zk:testnet` (auto-funds a key, deploys, init, verify true+false).
+
+Remaining honest gap: the compute-proof backend (bn254-noir) produces an
+UltraHonk proof; wiring bb's UltraHonk verification key into the on-chain
+verifier is the last step before SDK compute proofs themselves can be
+`stellar_verified` (today they are committed-only). The Groth16 verifier path
+above is genuinely `stellar_verified`.

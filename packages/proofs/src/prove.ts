@@ -83,6 +83,7 @@ export async function proveComputeIntent(input: ProveInput): Promise<{
     compiled,
     evaluation,
     capsule: input.capsule,
+    facts: input.facts,
     factMerkleProofs,
     privateInputs: input.intent.privateInputs,
   });

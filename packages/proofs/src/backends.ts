@@ -6,6 +6,7 @@ import type {
   MerkleProof,
   ProofBackendId,
   ProofEnvelope,
+  SemanticFact,
 } from "@sefi/shared-types";
 import { stableStringify } from "@sefi/source-records";
 import { buildProofEnvelope } from "./envelope.js";
@@ -14,6 +15,8 @@ export interface ProofRequest {
   compiled: CompiledComputeIntent;
   evaluation: ComputeEvaluation;
   capsule: ContextCapsule;
+  /** The exact capsule facts (insertion order) used to build the zkFactsRoot. */
+  facts: SemanticFact[];
   factMerkleProofs: MerkleProof[];
   privateInputs: Record<string, unknown>;
 }

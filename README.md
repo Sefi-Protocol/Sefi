@@ -126,7 +126,7 @@ Sefi ships real BN254 Noir circuits (`circuits/`) and Soroban verifier contracts
 
 | Contract | Testnet ID |
 |---|---|
-| verifier (`noir_ultrahonk_verifier`) | `CC2HYEYVFQ6RH6NECDRJWKJBN4XP3XBGXPG4XNAQLGP4KA6PCFL7HGDN` |
+| verifier (`noir_ultrahonk_verifier`) | `CB3RIXWBHZLDTKYUX2EV3AKGQ73B4WRFPEATULLCMHLPXOINFSGBO5XZ` |
 | registry (`sefi_verifier_registry`) | `CBAYTGH524MS6WILWGUB5LLOQO3JCRHO77NP6OVQAJUMX5J4O3GR4UWT` |
 
 ```bash

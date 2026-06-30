@@ -27,8 +27,13 @@ in-circuit verification Sefi adds BN254-field commitments
 - Each fact maps to a stable `pathId` (registry in `FACT_PATH_IDS`) and a
   `zkFactLeaf { pathId, valueField, adapterHashField, ledgerSeq }`.
 - `zkFactLeafHash = Poseidon4(pathId, value, adapterHash, ledgerSeq)` (circomlib
-  BN254 Poseidon via `poseidon-lite`).
-- `zkFactsRoot = PoseidonMerkleRoot(sorted(leafHashes))`.
+  BN254 Poseidon via `poseidon-lite`). Ratio fields (`pool.utilization`,
+  `health.factor`, …) are committed as 1e6 fixed point so the leaf value equals
+  the predicate input.
+- `zkFactsRoot = fixed-depth (8) Poseidon Merkle root` over the leaf hashes in
+  insertion order, zero-padded — the exact tree the Noir circuit's
+  `verify_merkle_path` reproduces. Built sparsely (only the populated path is
+  hashed). Inclusion proofs: `zkFactMerkleProof(facts, index)`.
 - `zkContextRoot = Poseidon3(zkFactsRoot, sourceRootFr, adapterSetHashFr)`.
 
 These are stored on the capsule (`zkFactsRoot`, `zkContextRoot`, `rootVersion`
@@ -92,7 +97,7 @@ Deployed to **Stellar testnet** (Protocol 25+):
 
 | Contract | ID |
 |---|---|
-| verifier (`noir_ultrahonk_verifier`) | `CC2HYEYVFQ6RH6NECDRJWKJBN4XP3XBGXPG4XNAQLGP4KA6PCFL7HGDN` |
+| verifier (`noir_ultrahonk_verifier`) | `CB3RIXWBHZLDTKYUX2EV3AKGQ73B4WRFPEATULLCMHLPXOINFSGBO5XZ` |
 | registry (`sefi_verifier_registry`) | `CBAYTGH524MS6WILWGUB5LLOQO3JCRHO77NP6OVQAJUMX5J4O3GR4UWT` |
 
 On-chain `bn254_smoke_g1_double` / `_triple` return `true`; `emit_proof_card`
@@ -105,14 +110,35 @@ pnpm deploy:verifier:testnet      # auto-generates + funds a key if none set
 SEFI_REGISTRY_CONTRACT_ID=C... pnpm verify:proof:testnet <proofId>
 ```
 
-### Honest scope of the verifier
+### Real on-chain Groth16 verification (stellar_verified)
 
-`verify_proof` is a real BN254 pairing-check verifier (Groth16 verification
-equation) over the host BN254 functions — but it is **not yet wired to bb's
-exact UltraHonk verification key**. Until the bb-generated VK is registered, the
-on-chain path is labelled `proof_card_commitment_only`, never
-`stellar_verified`. To finish: generate the bb verifier artifact for a circuit,
-encode its VK into `VerifyingKey`, register it, and submit the real proof bytes.
+`verify_proof(public_inputs, proof)` is a real BN254 Groth16 verifier: it
+computes `vk_x = IC[0] + Σ pubᵢ·IC[i+1]` and the 4-term pairing check
+`e(-A,B)·e(α,β)·e(vk_x,γ)·e(C,δ) == 1` using the host BN254 functions. It is
+**not a stub** — proven by:
+
+- `cargo test groth16_test::verify_real_groth16_proof_on_chain`: a genuine
+  `ark-groth16` proof verifies in the Soroban host (true); a wrong public input
+  returns false.
+- Live on **Stellar testnet**: `verify_proof` returns `true` for a valid proof
+  and `false` for a wrong public input (on-ledger tx
+  `fbccaba320188490de79991b7e73ae8cae414a3565c4642c12c32f1feb1e4384`).
+- `sefi.verify().onStellarGroth16(...)` invokes it and returns
+  `verificationMode: "stellar_verified"` when the on-chain check passes.
+
+```bash
+pnpm zk:testnet     # generate a real Groth16 proof, deploy/init, verify true+false on testnet
+```
+
+### Remaining honest gap (UltraHonk wiring)
+
+The compute-proof backend (`bn254-noir`) produces an **UltraHonk** proof via
+nargo+bb, whereas the deployed verifier checks **Groth16**. Until bb's UltraHonk
+verification key + proof format are wired into a verifier contract, an SDK
+*compute proof* is only committed on-chain (`proof_card_commitment_only`), not
+`stellar_verified`. The Groth16 verifier path above is genuinely
+`stellar_verified` today. To close the gap: deploy a bb-generated UltraHonk
+Soroban verifier, register its VK, and submit the bb proof bytes.
 
 Provenance: `noir_ultrahonk_verifier` is original Sefi code built on the Soroban
 BN254 host API (MIT). It is not a vendored UltraHonk verifier.

@@ -28,7 +28,13 @@
     "deploy:verifier:testnet": "bash scripts/deploy-verifier-testnet.sh",
     "verify:proof:testnet": "tsx scripts/verify-proof-testnet.ts",
     "noir:build": "tsx scripts/noir-build.ts",
-    "zk:test": "tsx scripts/zk-test.ts"
+    "zk:test": "tsx scripts/zk-test.ts",
+    "prove:blend:bn254": "tsx scripts/prove-blend-bn254.ts",
+    "prove:composite:bn254": "tsx scripts/prove-composite-bn254.ts",
+    "verify:proof:bn254": "tsx scripts/verify-proof-bn254.ts",
+    "zk:testnet": "tsx scripts/verify-groth16-testnet.ts",
+    "zk:localnet": "tsx scripts/zk-localnet.ts",
+    "verify:groth16:testnet": "tsx scripts/verify-groth16-testnet.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -119,3 +119,4 @@ fn g1_generator(env: &Env) -> Bn254G1Affine {
 }
 
 mod test;
+mod groth16_test;

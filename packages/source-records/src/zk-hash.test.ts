@@ -7,7 +7,11 @@ import {
   factPathId,
   hashFactToFr,
   zkFactsRootFr,
-  poseidonMerkleRoot,
+  zkFactMerkleProof,
+  verifyZkMerkleProof,
+  buildFixedTree,
+  fixedTreeProof,
+  ZK_MERKLE_DEPTH,
   zkContextRootFr,
 } from "./zk-hash.js";
 
@@ -73,12 +77,37 @@ test("changing adapter hash changes zkFactsRoot", () => {
   assert.notEqual(a, b);
 });
 
-test("two-leaf and odd-leaf poseidon roots are order-independent and stable", () => {
-  const a = poseidonMerkleRoot([3n, 1n, 2n]);
-  const b = poseidonMerkleRoot([1n, 2n, 3n]);
-  assert.equal(a, b);
-  const single = poseidonMerkleRoot([42n]);
-  assert.equal(single, 42n);
+test("fixed-depth tree produces depth-length inclusion proofs that verify", () => {
+  const leaves = [11n, 22n, 33n, 44n, 55n];
+  const tree = buildFixedTree(leaves);
+  for (let i = 0; i < leaves.length; i++) {
+    const proof = fixedTreeProof(tree, i);
+    assert.equal(proof.siblings.length, ZK_MERKLE_DEPTH);
+    assert.equal(proof.bits.length, ZK_MERKLE_DEPTH);
+    assert.equal(proof.leaf, leaves[i]);
+    assert.equal(proof.root, tree.root);
+    assert.ok(verifyZkMerkleProof(proof), `leaf ${i} verifies`);
+  }
+});
+
+test("fixed-depth Merkle proof is tamper-evident", () => {
+  const facts = [fact({ id: "a", value: "100" }), fact({ id: "b", value: "200" }), fact({ id: "c", value: "300" })];
+  const proof = zkFactMerkleProof(facts, 1);
+  assert.equal(proof.leaf, hashFactToFr(facts[1]));
+  assert.ok(verifyZkMerkleProof(proof));
+  // Tampered leaf fails.
+  assert.equal(verifyZkMerkleProof({ ...proof, leaf: 999n }), false);
+  // Tampered sibling fails.
+  const badSibs = [...proof.siblings];
+  badSibs[0] = badSibs[0] + 1n;
+  assert.equal(verifyZkMerkleProof({ ...proof, siblings: badSibs }), false);
+});
+
+test("fixed-depth root is insertion-order sensitive and matches zkFactsRootFr", () => {
+  const f1 = fact({ id: "a", value: "100" });
+  const f2 = fact({ id: "b", value: "200" });
+  assert.notEqual(zkFactsRootFr([f1, f2]), zkFactsRootFr([f2, f1]));
+  assert.equal(zkFactsRootFr([f1, f2]), buildFixedTree([hashFactToFr(f1), hashFactToFr(f2)]).root);
 });
 
 test("zkContextRoot binds zkFactsRoot + sourceRoot + adapterSetHash", () => {

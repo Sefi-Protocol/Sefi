@@ -7,6 +7,7 @@ import type { ProofEnvelope } from "@sefi/shared-types";
 import { buildProofEnvelope } from "./envelope.js";
 import type { ProofRequest } from "./backends.js";
 import { detectNoirToolchain, NOIR_TEMPLATES } from "./noir.js";
+import { buildWitness, witnessToToml, referenceEvaluate } from "./witness.js";
 
 const exec = promisify(execFile);
 
@@ -56,9 +57,29 @@ export async function proveBn254(input: ProofRequest): Promise<ProofEnvelope> {
   const dir = circuitDir(template);
   const work = await mkdtemp(join(tmpdir(), "sefi-bn254-"));
   try {
-    // Witness inputs are written to Prover.toml in the circuit dir (gitignored).
-    const prover = buildProverToml(input);
-    await writeFile(join(dir, "Prover.toml"), prover, "utf8");
+    // Build the COMPLETE witness (public roots + per-fact value/pathId/adapter/
+    // ledger/Merkle path/bits + private thresholds) and write Prover.toml.
+    const witness = buildWitness({
+      recipe: input.compiled.name,
+      compiled: input.compiled,
+      capsule: input.capsule,
+      facts: input.facts,
+      evaluation: input.evaluation,
+      privateInputs: input.privateInputs,
+    });
+    // Validate the witness against the TS reference circuit before invoking
+    // nargo — a complete + correct witness is required for `nargo execute`.
+    const ref = referenceEvaluate(input.compiled.name, witness.facts, witness.thresholds, {
+      zkContextRoot: witness.public.zkContextRoot,
+      zkFactsRoot: witness.public.zkFactsRoot,
+      sourceRoot: witness.public.sourceRoot,
+      adapterSetHash: witness.public.adapterSetHash,
+    });
+    if (!ref.contextRootOk || !ref.merkleOk)
+      throw new Bn254NotAvailableError(
+        `SEFI_BN254_WITNESS_INVALID: contextRootOk=${ref.contextRootOk} merkleOk=${ref.merkleOk}`,
+      );
+    await writeFile(join(dir, "Prover.toml"), witnessToToml(witness), "utf8");
 
     // 1) execute -> witness
     await exec(nargoBin(), ["execute", "witness"], { cwd: dir, timeout: 120_000 });
@@ -116,27 +137,3 @@ export async function verifyBn254Local(envelope: ProofEnvelope): Promise<boolean
   }
 }
 
-/** Build the Prover.toml witness for a recipe (public roots + private inputs). */
-function buildProverToml(input: ProofRequest): string {
-  const pi = input.compiled;
-  const lines: string[] = [];
-  // Public inputs as field strings.
-  lines.push(`zk_context_root = "${frDec((input.capsule.zkContextRoot as string) ?? "0x0")}"`);
-  lines.push(`zk_facts_root = "${frDec((input.capsule.zkFactsRoot as string) ?? "0x0")}"`);
-  lines.push(`compute_hash = "${frDec(pi.computeHash)}"`);
-  lines.push(`result_hash = "${frDec(input.evaluation.resultHash)}"`);
-  // Private witness — recipe-specific; the circuit's main.nr defines the names.
-  // The generic encoder writes the fact values + private thresholds it can find.
-  for (const b of pi.factRefs) {
-    const fact = input.capsule ? undefined : undefined;
-    void fact;
-    lines.push(`# fact ${b.variable} -> ${b.field}`);
-  }
-  return lines.join("\n") + "\n";
-}
-
-/** Convert 0x hex to decimal string for Noir field literals. */
-function frDec(hex: string): string {
-  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
-  return BigInt("0x" + (clean || "0")).toString(10);
-}

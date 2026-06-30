@@ -6,11 +6,15 @@ import type {
   ProofEnvelope,
   ProveResult,
 } from "@sefi/shared-types";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { compileIntent, evaluateCompute } from "@sefi/compute";
 import { proveComputeIntent, verifyLocal, type VerifyResult } from "@sefi/proofs";
 import { verifyCapsule } from "@sefi/context-capsules";
 import type { SefiRuntime } from "./runtime.js";
 import { ContextModule, type ComposeRequest } from "./context.js";
+
+const exec = promisify(execFile);
 
 /**
  * ComputeKit SDK namespace (spec §17): compile / evaluate / prove / explain a
@@ -156,12 +160,14 @@ export class VerifyModule {
   }
 
   /**
-   * Stellar verification (audit Part G). When a registry contract is configured
-   * (SEFI_REGISTRY_CONTRACT_ID) this reports the commitment-only mode; the real
-   * on-chain commit is performed by scripts/verify-proof-testnet.ts via the
-   * stellar CLI. `stellar_verified` is only returned when the on-chain
-   * verify_proof path is wired to bb's UltraHonk VK (not yet — see zk-bn254.md),
-   * so we never overclaim here.
+   * Stellar verification for a Sefi ComputeIntent proof envelope.
+   *
+   * Honest scope: the compute proof backend (bn254-noir) produces an UltraHonk
+   * proof, and the deployed Soroban verifier is a BN254 *Groth16* verifier not
+   * yet wired to bb's UltraHonk VK. So an UltraHonk compute proof can only be
+   * COMMITTED on-chain (`proof_card_commitment_only`), never `stellar_verified`,
+   * via this method — we do not overclaim. Real on-chain `stellar_verified` for
+   * BN254 Groth16 proofs is available through {@link onStellarGroth16}.
    */
   async onStellar(envelope: ProofEnvelope): Promise<{
     status: "committed_on_stellar" | "not_configured";
@@ -182,5 +188,54 @@ export class VerifyModule {
       registryContractId: registry,
       verifierContractId: verifier,
     };
+  }
+
+  /**
+   * REAL on-chain BN254 Groth16 verification (audit follow-up #4). Invokes the
+   * deployed verifier contract's `verify_proof(public_inputs, proof)` on Stellar
+   * and returns `stellar_verified` iff the on-chain pairing check returns true.
+   * This is genuine on-chain ZK verification — not a commitment. Requires the
+   * `stellar` CLI + a funded identity and an initialised verifier contract.
+   */
+  async onStellarGroth16(input: {
+    verifierContractId?: string;
+    identity?: string;
+    network?: "testnet" | "mainnet";
+    proof: { a: string; b: string; c: string };
+    publicInputs: string[];
+  }): Promise<{
+    verified: boolean;
+    status: "stellar_verified" | "rejected" | "not_configured";
+    verificationMode: "stellar_verified" | "rejected" | "not_configured";
+    verifierContractId?: string;
+    verificationTx?: string;
+  }> {
+    const verifier = input.verifierContractId ?? process.env.SEFI_VERIFIER_CONTRACT_ID;
+    const identity = input.identity ?? process.env.SEFI_TESTNET_IDENTITY ?? "sefi-testnet";
+    const network = input.network ?? "testnet";
+    if (!verifier) return { verified: false, status: "not_configured", verificationMode: "not_configured" };
+    try {
+      const { stdout, stderr } = await exec(
+        "stellar",
+        [
+          "contract", "invoke", "--id", verifier, "--source", identity, "--network", network,
+          "--send=yes", "--", "verify_proof",
+          "--public_inputs", JSON.stringify(input.publicInputs),
+          "--proof", JSON.stringify(input.proof),
+        ],
+        { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+      );
+      const verified = stdout.trim().endsWith("true");
+      const verificationTx = /Signing transaction: ([0-9a-f]{64})/.exec(stderr)?.[1];
+      return {
+        verified,
+        status: verified ? "stellar_verified" : "rejected",
+        verificationMode: verified ? "stellar_verified" : "rejected",
+        verifierContractId: verifier,
+        verificationTx,
+      };
+    } catch (e) {
+      return { verified: false, status: "rejected", verificationMode: "rejected", verifierContractId: verifier };
+    }
   }
 }
