@@ -1,0 +1,303 @@
+import pg from "pg";
+import type {
+  ContextCapsule,
+  SemanticFact,
+  SourceRecord,
+} from "@sefi/shared-types";
+import type { FactQuery, SefiStore } from "./types.js";
+
+const { Pool } = pg;
+
+/**
+ * PostgreSQL-backed store (canonical store, spec §4.4 / §7). Tables are created
+ * by services/postgres/migrations. JSONB columns hold raw responses and fact
+ * values; the fact_sources / capsule_* join tables preserve provenance.
+ */
+export class PgStore implements SefiStore {
+  private pool: pg.Pool;
+
+  constructor(connectionString: string) {
+    this.pool = new Pool({ connectionString });
+  }
+
+  async init(): Promise<void> {
+    // Connectivity probe; migrations are applied separately (idempotent).
+    await this.pool.query("SELECT 1");
+  }
+
+  async saveSourceRecords(records: SourceRecord[]): Promise<void> {
+    for (const r of records) {
+      await this.pool.query(
+        `INSERT INTO source_records
+          (id, network, protocol, source_kind, endpoint, contract_id, function_name,
+           args_xdr, request_hash, response_hash, raw_response, raw_xdr, ledger_seq,
+           latest_ledger, fetched_at, adapter_name, adapter_version, adapter_hash)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          r.id,
+          r.network,
+          r.protocol,
+          r.sourceKind,
+          r.endpoint ?? null,
+          r.contractId ?? null,
+          r.functionName ?? null,
+          r.argsXdr ?? null,
+          r.requestBodyHash,
+          r.responseHash,
+          JSON.stringify(r.rawResponse ?? null),
+          r.rawXdr ?? null,
+          r.ledgerSeq ?? null,
+          r.latestLedger ?? null,
+          r.fetchedAt,
+          r.adapterName,
+          r.adapterVersion,
+          r.adapterHash,
+        ],
+      );
+    }
+  }
+
+  async saveFacts(facts: SemanticFact[]): Promise<void> {
+    for (const f of facts) {
+      await this.pool.query(
+        `INSERT INTO semantic_facts
+          (id, network, protocol, entity_type, entity_id, field, value, unit,
+           ledger_seq, raw_hash, adapter_hash, confidence, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          f.id,
+          f.network,
+          f.protocol,
+          f.entityType,
+          f.entityId,
+          f.field,
+          JSON.stringify(f.value),
+          f.unit ?? null,
+          f.ledgerSeq ?? null,
+          f.rawHash,
+          f.adapterHash,
+          f.confidence,
+          f.createdAt,
+        ],
+      );
+      for (const srcId of f.sourceRecordIds) {
+        await this.pool.query(
+          `INSERT INTO fact_sources (fact_id, source_record_id)
+           VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+          [f.id, srcId],
+        );
+      }
+    }
+  }
+
+  async saveCapsule(c: ContextCapsule): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO context_capsules
+        (id, capsule_type, network, protocols, source_root, facts_root,
+         composite_root, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        c.id,
+        c.capsuleType,
+        c.network,
+        c.protocols,
+        c.sourceRoot,
+        c.factsRoot,
+        c.compositeRoot,
+        JSON.stringify({
+          adapterSetHash: c.adapterSetHash,
+          ledgerRange: c.ledgerRange ?? null,
+        }),
+      ],
+    );
+    for (const factId of c.semanticFactIds) {
+      await this.pool.query(
+        `INSERT INTO capsule_facts (capsule_id, fact_id)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [c.id, factId],
+      );
+    }
+    for (const srcId of c.sourceRecordIds) {
+      await this.pool.query(
+        `INSERT INTO capsule_sources (capsule_id, source_record_id)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [c.id, srcId],
+      );
+    }
+  }
+
+  async getSourceRecord(id: string): Promise<SourceRecord | null> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM source_records WHERE id = $1",
+      [id],
+    );
+    return rows[0] ? rowToSource(rows[0]) : null;
+  }
+
+  async getFact(id: string): Promise<SemanticFact | null> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM semantic_facts WHERE id = $1",
+      [id],
+    );
+    if (!rows[0]) return null;
+    return rowToFact(rows[0], await this.factSourceIds(id));
+  }
+
+  async getCapsule(id: string): Promise<ContextCapsule | null> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM context_capsules WHERE id = $1",
+      [id],
+    );
+    if (!rows[0]) return null;
+    const factIds = (
+      await this.pool.query(
+        "SELECT fact_id FROM capsule_facts WHERE capsule_id = $1",
+        [id],
+      )
+    ).rows.map((r: any) => r.fact_id);
+    const srcIds = (
+      await this.pool.query(
+        "SELECT source_record_id FROM capsule_sources WHERE capsule_id = $1",
+        [id],
+      )
+    ).rows.map((r: any) => r.source_record_id);
+    return rowToCapsule(rows[0], factIds, srcIds);
+  }
+
+  async queryFacts(query: FactQuery): Promise<SemanticFact[]> {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    const add = (col: string, val: unknown) => {
+      params.push(val);
+      clauses.push(`${col} = $${params.length}`);
+    };
+    if (query.network) add("network", query.network);
+    if (query.protocol) add("protocol", query.protocol);
+    if (query.entityType) add("entity_type", query.entityType);
+    if (query.entityId) add("entity_id", query.entityId);
+    if (query.field) add("field", query.field);
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = query.limit ? `LIMIT ${Number(query.limit)}` : "LIMIT 500";
+    const { rows } = await this.pool.query(
+      `SELECT * FROM semantic_facts ${where} ORDER BY created_at DESC ${limit}`,
+      params,
+    );
+    const out: SemanticFact[] = [];
+    for (const row of rows)
+      out.push(rowToFact(row, await this.factSourceIds(row.id)));
+    return out;
+  }
+
+  async getCapsuleSourceRecords(capsuleId: string): Promise<SourceRecord[]> {
+    const { rows } = await this.pool.query(
+      `SELECT sr.* FROM source_records sr
+       JOIN capsule_sources cs ON cs.source_record_id = sr.id
+       WHERE cs.capsule_id = $1`,
+      [capsuleId],
+    );
+    return rows.map(rowToSource);
+  }
+
+  async getCapsuleFacts(capsuleId: string): Promise<SemanticFact[]> {
+    const { rows } = await this.pool.query(
+      `SELECT sf.* FROM semantic_facts sf
+       JOIN capsule_facts cf ON cf.fact_id = sf.id
+       WHERE cf.capsule_id = $1`,
+      [capsuleId],
+    );
+    const out: SemanticFact[] = [];
+    for (const row of rows)
+      out.push(rowToFact(row, await this.factSourceIds(row.id)));
+    return out;
+  }
+
+  private async factSourceIds(factId: string): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      "SELECT source_record_id FROM fact_sources WHERE fact_id = $1",
+      [factId],
+    );
+    return rows.map((r: any) => r.source_record_id);
+  }
+
+  async close(): Promise<void> {
+    await this.pool.end();
+  }
+}
+
+function rowToSource(row: any): SourceRecord {
+  return {
+    id: row.id,
+    network: row.network,
+    protocol: row.protocol,
+    sourceKind: row.source_kind,
+    endpoint: row.endpoint ?? undefined,
+    contractId: row.contract_id ?? undefined,
+    functionName: row.function_name ?? undefined,
+    argsXdr: row.args_xdr ?? undefined,
+    requestBodyHash: row.request_hash,
+    responseHash: row.response_hash,
+    rawResponseRef: row.id,
+    rawResponse: row.raw_response ?? undefined,
+    rawXdr: row.raw_xdr ?? undefined,
+    ledgerSeq: row.ledger_seq != null ? Number(row.ledger_seq) : undefined,
+    latestLedger:
+      row.latest_ledger != null ? Number(row.latest_ledger) : undefined,
+    fetchedAt:
+      row.fetched_at instanceof Date
+        ? row.fetched_at.toISOString()
+        : row.fetched_at,
+    adapterName: row.adapter_name,
+    adapterVersion: row.adapter_version,
+    adapterHash: row.adapter_hash,
+  };
+}
+
+function rowToFact(row: any, sourceRecordIds: string[]): SemanticFact {
+  return {
+    id: row.id,
+    network: row.network,
+    protocol: row.protocol,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    field: row.field,
+    value: row.value,
+    unit: row.unit ?? undefined,
+    ledgerSeq: row.ledger_seq != null ? Number(row.ledger_seq) : undefined,
+    sourceRecordIds,
+    rawHash: row.raw_hash,
+    adapterHash: row.adapter_hash,
+    confidence: row.confidence,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : row.created_at,
+  };
+}
+
+function rowToCapsule(
+  row: any,
+  factIds: string[],
+  srcIds: string[],
+): ContextCapsule {
+  const meta = row.metadata ?? {};
+  return {
+    id: row.id,
+    capsuleType: row.capsule_type,
+    network: row.network,
+    protocols: row.protocols,
+    sourceRecordIds: srcIds,
+    semanticFactIds: factIds,
+    sourceRoot: row.source_root,
+    factsRoot: row.facts_root,
+    adapterSetHash: meta.adapterSetHash ?? "0x",
+    compositeRoot: row.composite_root,
+    ledgerRange: meta.ledgerRange ?? undefined,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : row.created_at,
+  };
+}

@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.run/
+
+# dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# Next.js dashboard
+apps/dashboard/.next/
+
+*.log

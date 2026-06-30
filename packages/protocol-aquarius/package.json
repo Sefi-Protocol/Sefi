@@ -1,0 +1,17 @@
+{
+  "name": "@sefi/protocol-aquarius",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sefi/shared-types": "workspace:*",
+    "@sefi/source-records": "workspace:*",
+    "@sefi/semantic-core": "workspace:*",
+    "@sefi/stellar-client": "workspace:*",
+    "@sefi/store": "workspace:*"
+  }
+}

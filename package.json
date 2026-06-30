@@ -1,0 +1,39 @@
+{
+  "name": "sefi-stellar",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sefi — Stellar protocol semantic layer + Agent SDK (Part 1)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit || tsc -b",
+    "test": "node --import tsx --test \"packages/**/*.test.ts\"",
+    "api": "tsx apps/api/src/index.ts",
+    "worker": "tsx apps/worker/src/index.ts",
+    "demo": "tsx apps/demo-agent/src/index.ts",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "ingest:blend": "tsx scripts/ingest-blend.ts",
+    "ingest:aquarius": "tsx scripts/ingest-aquarius.ts",
+    "ingest:sdex": "tsx scripts/ingest-sdex.ts",
+    "replay": "tsx scripts/replay.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@blend-capital/blend-sdk": "3.1.0",
+    "@sefi/context-capsules": "workspace:*",
+    "@sefi/sdk": "workspace:*",
+    "@sefi/shared-types": "workspace:*",
+    "@sefi/store": "workspace:*",
+    "@stellar/stellar-sdk": "13.3.0",
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  }
+}

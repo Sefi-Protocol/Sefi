@@ -1,0 +1,9 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+allowBuilds:
+  esbuild: true
+  sharp: true
+overrides:
+  "@stellar/stellar-sdk": "13.3.0"
+  "@blend-capital/blend-sdk": "3.1.0"
