@@ -43,6 +43,8 @@ export interface SefiStore {
   getComputeIntent(id: string): Promise<CompiledComputeIntent | null>;
   saveProofEnvelope(envelope: ProofEnvelope, computeIntentId?: string): Promise<void>;
   getProofEnvelope(id: string): Promise<ProofEnvelope | null>;
+  /** Resolve the compiled intent linked to a proof envelope (audit Part E §4). */
+  getComputeIntentByProof(proofId: string): Promise<CompiledComputeIntent | null>;
   saveProofCard(card: ProofCard, proofEnvelopeId: string): Promise<void>;
   getProofCard(proofId: string): Promise<ProofCard | null>;
 

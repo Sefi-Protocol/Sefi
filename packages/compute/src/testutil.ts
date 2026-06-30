@@ -3,6 +3,14 @@ import { buildSourceRecord } from "@sefi/source-records";
 import { buildFact } from "@sefi/semantic-core";
 import { buildCapsule } from "@sefi/context-capsules";
 
+/** Distinct valid-hex adapter hashes per protocol (real ones are sha256 hex). */
+const ADAPTER_HASH: Record<string, string> = {
+  blend: "0x" + "a1".repeat(32),
+  aquarius: "0x" + "b2".repeat(32),
+  stellar_dex: "0x" + "c3".repeat(32),
+  stellar_amm: "0x" + "d4".repeat(32),
+};
+
 /** Build a source record + facts for a protocol, for deterministic tests. */
 export function mkSource(protocol: Protocol, network: Network = "mainnet"): SourceRecord {
   return buildSourceRecord({
@@ -13,7 +21,7 @@ export function mkSource(protocol: Protocol, network: Network = "mainnet"): Sour
     ledgerSeq: 1000,
     adapterName: protocol,
     adapterVersion: "1.0.0",
-    adapterHash: `0xada_${protocol}`,
+    adapterHash: ADAPTER_HASH[protocol] ?? "0x" + "ee".repeat(32),
   });
 }
 

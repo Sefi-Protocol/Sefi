@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@sefi/shared-types": "workspace:*"
+    "@sefi/shared-types": "workspace:*",
+    "poseidon-lite": "^0.3.0"
   }
 }

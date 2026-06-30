@@ -337,6 +337,9 @@ importers:
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      poseidon-lite:
+        specifier: ^0.3.0
+        version: 0.3.0
 
   packages/stellar-client:
     dependencies:
@@ -349,6 +352,9 @@ importers:
 
   packages/store:
     dependencies:
+      '@sefi/context-capsules':
+        specifier: workspace:*
+        version: link:../context-capsules
       '@sefi/shared-types':
         specifier: workspace:*
         version: link:../shared-types
@@ -1387,6 +1393,9 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  poseidon-lite@0.3.0:
+    resolution: {integrity: sha512-ilJj4MIve4uBEG7SrtPqUUNkvpJ/pLVbndxa0WvebcQqeIhe+h72JR4g0EvwchUzm9sOQDlOjiDNmRAgxNZl4A==}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -2585,6 +2594,8 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
+
+  poseidon-lite@0.3.0: {}
 
   possible-typed-array-names@1.1.0: {}
 

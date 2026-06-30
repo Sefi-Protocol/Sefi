@@ -76,11 +76,17 @@ export function normalizeFactValue(
 }
 
 /**
- * Normalize a private input per its declared scalar type (spec §7). Per the
- * spec's examples, callers pass numeric private inputs ALREADY scaled (e.g.
- * `maxUtilization: "820000"` = 0.82 × 1e6), so numeric types are parsed as raw
- * integers — never re-scaled — keeping them in the same 1e6 domain as the
- * fixed-point facts they are compared against.
+ * Normalize a private input per its declared scalar type (audit Part D).
+ *
+ * Disambiguation rule (no guessing):
+ *  - `fixed_1e6` values are DECIMAL ratios and are scaled by 1e6:
+ *      "0.82" -> 820000, "1.25" -> 1250000, "1" -> 1000000.
+ *    This matches the whitepaper examples and keeps them in the same 1e6 domain
+ *    as the fixed-point facts they are compared against.
+ *  - `u64` / `u128` / `i128` values are RAW integers, never scaled:
+ *      "820000" -> 820000. Use these for pre-scaled or count/amount inputs.
+ *  - `bool` accepts true/false.
+ * Non-numeric values throw a clear ComputeTypeError.
  */
 export function normalizePrivateInput(
   name: string,
@@ -91,6 +97,7 @@ export function normalizePrivateInput(
     case "bool":
       return toBool(value);
     case "fixed_1e6":
+      return toFixed1e6(value as string | number);
     case "u64":
     case "u128":
     case "i128":

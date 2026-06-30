@@ -85,11 +85,17 @@ export class MemoryStore implements SefiStore {
   async getComputeIntent(id: string): Promise<CompiledComputeIntent | null> {
     return this.intents.get(id) ?? null;
   }
-  async saveProofEnvelope(envelope: ProofEnvelope): Promise<void> {
+  private proofToIntent = new Map<string, string>();
+  async saveProofEnvelope(envelope: ProofEnvelope, computeIntentId?: string): Promise<void> {
     this.envelopes.set(envelope.proofId, envelope);
+    if (computeIntentId) this.proofToIntent.set(envelope.proofId, computeIntentId);
   }
   async getProofEnvelope(id: string): Promise<ProofEnvelope | null> {
     return this.envelopes.get(id) ?? null;
+  }
+  async getComputeIntentByProof(proofId: string): Promise<CompiledComputeIntent | null> {
+    const intentId = this.proofToIntent.get(proofId);
+    return intentId ? (this.intents.get(intentId) ?? null) : null;
   }
   async saveProofCard(card: ProofCard): Promise<void> {
     this.cards.set(card.proofId, card);

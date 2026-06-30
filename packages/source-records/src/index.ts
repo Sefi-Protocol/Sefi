@@ -126,3 +126,5 @@ export function canonicalFactForHash(fact: SemanticFact): unknown {
 export function hashSemanticFact(fact: SemanticFact): string {
   return sha256Hex(stableStringify(canonicalFactForHash(fact)));
 }
+
+export * from "./zk-hash.js";

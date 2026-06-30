@@ -146,7 +146,12 @@ export function compileIntent(input: CompileInput): CompiledComputeIntent {
     factTypeByVar.set(variable, binding.valueType);
   }
 
+  // Explicit schema (audit Part D) overrides inference; inference fills gaps.
   const privateInputSchema = inferPrivateTypes(ast, factTypeByVar);
+  if (intent.privateInputSchema) {
+    for (const [name, type] of Object.entries(intent.privateInputSchema))
+      privateInputSchema[name] = type;
+  }
   for (const p of privates) if (!privateInputSchema[p]) privateInputSchema[p] = "u128";
 
   const reveal = [...intent.reveal].sort();

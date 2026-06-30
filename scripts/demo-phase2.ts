@@ -70,7 +70,7 @@ async function main() {
         sdex: { path: { sourceAsset: "USDC", destinationAsset: "XLM", sourceAmount: AMOUNT } },
       },
       compute: RECIPES["composite-borrow-exit-policy"],
-      privateInputs: { minHealth: "1250000", minReceive: "1" },
+      privateInputs: { minHealth: "1.25", minReceive: "1" },
       reveal: ["allowed"],
       hide: ["minHealth", "minReceive"],
       proof: { backend: "auto", verifyOn: "offchain", proveDataUsed: true },

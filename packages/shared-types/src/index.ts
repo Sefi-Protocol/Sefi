@@ -113,6 +113,11 @@ export interface ContextCapsule {
   /** Phase 2 v2 commitments (spec §3). Bind exact fact values to the context. */
   semanticFactsRoot?: string;
   contextRoot?: string;
+  /** Phase 2 v3 ZK-friendly (BN254 Fr / Poseidon) roots for in-circuit binding. */
+  zkFactsRoot?: string;
+  zkContextRoot?: string;
+  /** "v1" | "v2" | "v3" — highest commitment level available on this capsule. */
+  rootVersion?: string;
   ledgerRange?: {
     minLedger?: number;
     maxLedger?: number;
@@ -139,9 +144,12 @@ export type ProofBackendId = "noir" | "risc0" | "prebuilt" | "local-dev";
 export interface ComputeIntent {
   id?: string;
   name: string;
+  /** Protocol request object, or `{ capsuleId }` to prove against a stored capsule. */
   context: Record<string, unknown>;
   compute: string | ExpressionAst;
   privateInputs: Record<string, string | number | boolean>;
+  /** Explicit private-input types (audit Part D). fixed_1e6 = decimal, scaled by 1e6. */
+  privateInputSchema?: Record<string, SefiScalarType>;
   reveal: string[];
   hide: string[];
   proof: {

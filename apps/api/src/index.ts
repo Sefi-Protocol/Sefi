@@ -14,7 +14,12 @@ const NETWORK = (process.env.SEFI_NETWORK ?? "mainnet") as Network;
 async function bootstrap() {
   const databaseUrl = process.env.DATABASE_URL;
   if (databaseUrl) {
-    for (const file of ["0001_init.sql", "0002_compute_proofs.sql"]) {
+    for (const file of [
+      "0001_init.sql",
+      "0002_compute_proofs.sql",
+      "0003_capsule_v2_roots.sql",
+      "0004_ingestion_checkpoints.sql",
+    ]) {
       const sql = readFileSync(
         resolve(__dirname, `../../../services/postgres/migrations/${file}`),
         "utf8",
@@ -152,7 +157,35 @@ async function bootstrap() {
   );
   app.post(
     "/v1/proofs/verify-local",
-    wrap((req) => sefi.verify().local(req.body.proofEnvelope ?? req.body)),
+    wrap(async (req) => {
+      // Strong verification (audit Part E §4): load envelope by id if given,
+      // and recompute the full intent → capsule → roots → result chain.
+      const envelope = req.body.proofId
+        ? await store.getProofEnvelope(req.body.proofId)
+        : (req.body.proofEnvelope ?? req.body);
+      if (!envelope || !(envelope as any).publicInputs)
+        return { valid: false, reasons: ["proof envelope not found"] };
+      return sefi.verify().local(envelope, {
+        compiledIntentId: req.body.compiledIntentId,
+        capsuleId: req.body.capsuleId,
+        dev: req.body.dev === true,
+      });
+    }),
+  );
+  // Alias for BN254-specific strong local verification (same strong path).
+  app.post(
+    "/v1/proofs/verify-bn254-local",
+    wrap(async (req) => {
+      const envelope = req.body.proofId
+        ? await store.getProofEnvelope(req.body.proofId)
+        : (req.body.proofEnvelope ?? req.body);
+      if (!envelope || !(envelope as any).publicInputs)
+        return { valid: false, reasons: ["proof envelope not found"] };
+      return sefi.verify().local(envelope, {
+        compiledIntentId: req.body.compiledIntentId,
+        capsuleId: req.body.capsuleId,
+      });
+    }),
   );
   app.post(
     "/v1/proofs/verify-on-stellar",

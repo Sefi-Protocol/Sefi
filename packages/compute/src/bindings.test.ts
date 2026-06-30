@@ -32,7 +32,7 @@ function run(opts: Parameters<typeof compositeCapsule>[0], priv: Record<string, 
 test("binding resolves blend/aquarius/sdex paths to correct fields", () => {
   const { compiled } = run(
     { health: "1.42", aquaOut: "99000000", aquaHops: 2, sdexAvailable: true, sdexOut: "98000000" },
-    { minHealth: "1250000", minReceive: "99000000" },
+    { minHealth: "1.25", minReceive: "99000000" },
   );
   const byVar = Object.fromEntries(compiled.factRefs.map((b) => [b.variable, b.field]));
   assert.equal(byVar["blend.healthAfterAction"], "health.factor");
@@ -45,7 +45,7 @@ test("binding resolves blend/aquarius/sdex paths to correct fields", () => {
 test("composite: Blend safe + Aqua ok -> allowed=true", () => {
   const { ev } = run(
     { health: "1.42", aquaOut: "99000000", aquaHops: 2, sdexAvailable: true, sdexOut: "10" },
-    { minHealth: "1250000", minReceive: "99000000" },
+    { minHealth: "1.25", minReceive: "99000000" },
   );
   assert.equal(ev.revealed.allowed, true);
 });
@@ -53,7 +53,7 @@ test("composite: Blend safe + Aqua ok -> allowed=true", () => {
 test("composite: Blend safe + Aqua false + SDEX true -> allowed=true", () => {
   const { ev } = run(
     { health: "1.42", aquaOut: "1", aquaHops: 9, sdexAvailable: true, sdexOut: "99000000" },
-    { minHealth: "1250000", minReceive: "99000000" },
+    { minHealth: "1.25", minReceive: "99000000" },
   );
   assert.equal(ev.revealed.allowed, true);
 });
@@ -61,7 +61,7 @@ test("composite: Blend safe + Aqua false + SDEX true -> allowed=true", () => {
 test("composite: Blend unsafe + liquidity true -> allowed=false", () => {
   const { ev } = run(
     { health: "1.10", aquaOut: "99000000", aquaHops: 2, sdexAvailable: true, sdexOut: "99000000" },
-    { minHealth: "1250000", minReceive: "99000000" },
+    { minHealth: "1.25", minReceive: "99000000" },
   );
   assert.equal(ev.revealed.allowed, false);
 });
@@ -69,7 +69,7 @@ test("composite: Blend unsafe + liquidity true -> allowed=false", () => {
 test("every fact binding carries a Merkle proof bound to semanticFactsRoot", () => {
   const { compiled } = run(
     { health: "1.42", aquaOut: "99000000", aquaHops: 2, sdexAvailable: true, sdexOut: "98000000" },
-    { minHealth: "1250000", minReceive: "99000000" },
+    { minHealth: "1.25", minReceive: "99000000" },
   );
   for (const b of compiled.factRefs) {
     assert.ok(b.merkleProof, `binding ${b.variable} has merkle proof`);

@@ -99,8 +99,9 @@ export class PgStore implements SefiStore {
     await this.pool.query(
       `INSERT INTO context_capsules
         (id, capsule_type, network, protocols, source_root, facts_root,
-         composite_root, metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         composite_root, semantic_facts_root, context_root, adapter_set_hash,
+         zk_facts_root, zk_context_root, root_version, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (id) DO NOTHING`,
       [
         c.id,
@@ -110,6 +111,12 @@ export class PgStore implements SefiStore {
         c.sourceRoot,
         c.factsRoot,
         c.compositeRoot,
+        c.semanticFactsRoot ?? null,
+        c.contextRoot ?? null,
+        c.adapterSetHash,
+        c.zkFactsRoot ?? null,
+        c.zkContextRoot ?? null,
+        c.rootVersion ?? (c.zkContextRoot ? "v3" : c.contextRoot ? "v2" : "v1"),
         JSON.stringify({
           adapterSetHash: c.adapterSetHash,
           ledgerRange: c.ledgerRange ?? null,
@@ -280,6 +287,14 @@ export class PgStore implements SefiStore {
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
     };
   }
+  async getComputeIntentByProof(proofId: string): Promise<CompiledComputeIntent | null> {
+    const { rows } = await this.pool.query(
+      "SELECT compute_intent_id FROM proof_envelopes WHERE id=$1",
+      [proofId],
+    );
+    const intentId = rows[0]?.compute_intent_id;
+    return intentId ? this.getComputeIntent(intentId) : null;
+  }
   async saveProofCard(c: ProofCard, proofEnvelopeId: string): Promise<void> {
     await this.pool.query(
       `INSERT INTO proof_cards
@@ -388,7 +403,12 @@ function rowToCapsule(
     semanticFactIds: factIds,
     sourceRoot: row.source_root,
     factsRoot: row.facts_root,
-    adapterSetHash: meta.adapterSetHash ?? "0x",
+    semanticFactsRoot: row.semantic_facts_root ?? undefined,
+    contextRoot: row.context_root ?? undefined,
+    zkFactsRoot: row.zk_facts_root ?? undefined,
+    zkContextRoot: row.zk_context_root ?? undefined,
+    rootVersion: row.root_version ?? undefined,
+    adapterSetHash: row.adapter_set_hash ?? meta.adapterSetHash ?? "0x",
     compositeRoot: row.composite_root,
     ledgerRange: meta.ledgerRange ?? undefined,
     createdAt:

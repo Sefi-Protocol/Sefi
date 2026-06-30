@@ -14,6 +14,8 @@ import {
   merkleProof,
   merkleRoot,
   sha256Hex,
+  zkFactsRootHex,
+  zkContextRootHex,
   type MerkleProofParts,
 } from "@sefi/source-records";
 
@@ -44,6 +46,24 @@ export function contextRootV2(roots: {
   return sha256Hex(
     `${roots.sourceRoot}|${roots.semanticFactsRoot}|${roots.adapterSetHash}`,
   );
+}
+
+/** v3 ZK-friendly facts root (Poseidon over BN254 Fr leaves) (audit Part C). */
+export function zkFactsRoot(facts: SemanticFact[]): string {
+  return zkFactsRootHex(facts);
+}
+
+/** v3 ZK context root = Poseidon(zkFactsRoot, sourceRootFr, adapterSetHashFr). */
+export function zkContextRoot(roots: {
+  zkFactsRoot: string;
+  sourceRoot: string;
+  adapterSetHash: string;
+}): string {
+  return zkContextRootHex({
+    zkFactsRoot: BigInt(roots.zkFactsRoot),
+    sourceRootHex: roots.sourceRoot,
+    adapterSetHashHex: roots.adapterSetHash,
+  });
 }
 
 /**
@@ -121,6 +141,8 @@ export function buildCapsule(input: BuildCapsuleInput): ContextCapsule {
   const fRoot = factsRoot(input.facts);
   const sfRoot = semanticFactsRoot(input.facts);
   const aHash = adapterSetHash(input.sourceRecords);
+  const zkF = zkFactsRoot(input.facts);
+  const zkC = zkContextRoot({ zkFactsRoot: zkF, sourceRoot: sRoot, adapterSetHash: aHash });
   const distinct = [...new Set(input.protocols)];
   return {
     id: `capsule_${randomUUID().slice(0, 12)}`,
@@ -137,6 +159,9 @@ export function buildCapsule(input: BuildCapsuleInput): ContextCapsule {
       semanticFactsRoot: sfRoot,
       adapterSetHash: aHash,
     }),
+    zkFactsRoot: zkF,
+    zkContextRoot: zkC,
+    rootVersion: "v3",
     adapterSetHash: aHash,
     compositeRoot: compositeRoot({
       sourceRoot: sRoot,
@@ -185,30 +210,79 @@ export function composeContexts(
   return { composite, capsule };
 }
 
+export interface CapsuleVerification {
+  ok: boolean;
+  sourceRootOk: boolean;
+  factsRootOk: boolean;
+  compositeRootOk: boolean;
+  /** Only checked when the capsule carries the corresponding root (undefined = n/a). */
+  semanticFactsRootOk?: boolean;
+  contextRootOk?: boolean;
+  zkFactsRootOk?: boolean;
+  zkContextRootOk?: boolean;
+  rootVersion: string;
+}
+
 /**
- * Replay verification (spec §20.4): recompute roots from the provided facts /
- * sources and confirm they match the stored capsule.
+ * Replay verification (spec §20.4 / audit Part B). Recomputes every root the
+ * capsule carries from the provided facts/sources and confirms they all match.
+ * v2 (semanticFactsRoot/contextRoot) and v3 (zkFactsRoot/zkContextRoot) checks
+ * run only when the capsule has those roots; `ok` requires every present root
+ * to verify.
  */
 export function verifyCapsule(
   capsule: ContextCapsule,
   facts: SemanticFact[],
   sources: SourceRecord[],
-): { ok: boolean; sourceRootOk: boolean; factsRootOk: boolean; compositeRootOk: boolean } {
+): CapsuleVerification {
   const sRoot = sourceRoot(sources);
   const fRoot = factsRoot(facts);
   const aHash = adapterSetHash(sources);
-  const cRoot = compositeRoot({
-    sourceRoot: sRoot,
-    factsRoot: fRoot,
-    adapterSetHash: aHash,
-  });
+  const cRoot = compositeRoot({ sourceRoot: sRoot, factsRoot: fRoot, adapterSetHash: aHash });
+
   const sourceRootOk = sRoot === capsule.sourceRoot;
   const factsRootOk = fRoot === capsule.factsRoot;
   const compositeRootOk = cRoot === capsule.compositeRoot;
-  return {
-    ok: sourceRootOk && factsRootOk && compositeRootOk,
+
+  const checks: boolean[] = [sourceRootOk, factsRootOk, compositeRootOk];
+  const result: CapsuleVerification = {
+    ok: false,
     sourceRootOk,
     factsRootOk,
     compositeRootOk,
+    rootVersion: capsule.rootVersion ?? (capsule.zkContextRoot ? "v3" : capsule.contextRoot ? "v2" : "v1"),
   };
+
+  if (capsule.semanticFactsRoot !== undefined) {
+    const sfRoot = semanticFactsRoot(facts);
+    result.semanticFactsRootOk = sfRoot === capsule.semanticFactsRoot;
+    checks.push(result.semanticFactsRootOk);
+    const ctxRoot = contextRootV2({
+      sourceRoot: sRoot,
+      semanticFactsRoot: sfRoot,
+      adapterSetHash: aHash,
+    });
+    if (capsule.contextRoot !== undefined) {
+      result.contextRootOk = ctxRoot === capsule.contextRoot;
+      checks.push(result.contextRootOk);
+    }
+  }
+
+  if (capsule.zkFactsRoot !== undefined) {
+    const zkF = zkFactsRoot(facts);
+    result.zkFactsRootOk = zkF === capsule.zkFactsRoot;
+    checks.push(result.zkFactsRootOk);
+    if (capsule.zkContextRoot !== undefined) {
+      const zkC = zkContextRoot({
+        zkFactsRoot: zkF,
+        sourceRoot: sRoot,
+        adapterSetHash: aHash,
+      });
+      result.zkContextRootOk = zkC === capsule.zkContextRoot;
+      checks.push(result.zkContextRootOk);
+    }
+  }
+
+  result.ok = checks.every(Boolean);
+  return result;
 }

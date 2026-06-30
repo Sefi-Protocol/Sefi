@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@sefi/shared-types": "workspace:*",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "@sefi/context-capsules": "workspace:*"
   }
 }
