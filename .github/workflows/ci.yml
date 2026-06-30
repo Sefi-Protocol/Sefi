@@ -28,12 +28,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile || pnpm install
+      - run: pnpm install --no-frozen-lockfile
       - run: pnpm build
       - name: Unit tests (with Postgres)
         run: pnpm test
@@ -43,19 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Rust
-        id: rust
-        run: |
-          if command -v cargo >/dev/null 2>&1; then echo "have=1" >> "$GITHUB_OUTPUT"; else echo "have=0" >> "$GITHUB_OUTPUT"; fi
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.rust.outputs.have == '1' || true
-      - name: cargo test verifier-registry
+      - name: cargo test (registry + BN254 verifier incl. real Groth16)
         run: |
-          if [ -f contracts/verifier-registry/Cargo.toml ]; then
-            cargo test --manifest-path contracts/verifier-registry/Cargo.toml || echo "::warning::verifier-registry cargo test failed (soroban-sdk may need wasm target)"
-          else
-            echo "::notice::no verifier-registry contract; skipped"
-          fi
+          cargo test --manifest-path contracts/sefi_verifier_registry/Cargo.toml
+          cargo test --manifest-path contracts/noir_ultrahonk_verifier/Cargo.toml
 
   noir:
     name: Noir circuits (nargo check)

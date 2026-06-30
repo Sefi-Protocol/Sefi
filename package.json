@@ -56,5 +56,6 @@
     "pg": "^8.13.0",
     "@sefi/compute": "workspace:*",
     "@sefi/proofs": "workspace:*"
-  }
+  },
+  "packageManager": "pnpm@11.7.0"
 }
