@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  node:
+  node-build-test:
     name: Node build + test
     runs-on: ubuntu-latest
     services:
@@ -34,10 +34,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm build
-      - name: Unit tests (with Postgres)
+      # The committed circom artifacts (wasm+zkey+vkey) for all four recipes let
+      # the full Groth16 test matrix run here without a circom build.
+      - name: Unit tests (full Groth16 matrix + Postgres)
         run: pnpm test
 
-  contracts:
+  contracts-test:
     name: Rust contracts (cargo test)
     runs-on: ubuntu-latest
     steps:
@@ -48,8 +50,41 @@ jobs:
           cargo test --manifest-path contracts/sefi_verifier_registry/Cargo.toml
           cargo test --manifest-path contracts/noir_ultrahonk_verifier/Cargo.toml
 
-  zk:
-    name: ZK (real Groth16 proof of a ComputeIntent, verified)
+  zk-groth16-all:
+    name: ZK — build all circuits from source + full Groth16 proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      # circom is not published on crates.io — build it from source and cache it.
+      - name: Cache circom binary
+        id: circom-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/circom
+          key: circom-2-2-3-${{ runner.os }}
+      - name: Build circom from source
+        if: steps.circom-cache.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/iden3/circom --tag v2.2.3 --locked || cargo install --git https://github.com/iden3/circom --locked
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build
+      # Rebuild every recipe circuit (blend, aquarius, sdex, composite) from
+      # source, then generate + verify REAL Groth16 proofs and run the full test
+      # matrix. No silent skips: SEFI_REQUIRE_BN254=1.
+      - name: Build all circuits (circom:setup)
+        run: SEFI_REQUIRE_BN254=1 pnpm circom:setup
+      - name: Real Groth16 proof + verify of a ComputeIntent (zk:test)
+        run: SEFI_REQUIRE_BN254=1 pnpm zk:test
+      - name: Full test matrix over freshly-built circuits
+        run: SEFI_REQUIRE_BN254=1 pnpm test
+
+  phase3-fixture-e2e:
+    name: Phase 3 fixture E2E (offline, all 4 recipes)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,26 +94,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
-      # The canonical BLEND proving key + wasm + vkey are committed, so no circom
-      # build is needed: generate + verify a REAL Groth16 proof of a ComputeIntent.
-      - name: Real Groth16 proof + verify of a Sefi ComputeIntent (zk:test)
-        run: SEFI_REQUIRE_BN254=1 pnpm zk:test
-
-  noir:
-    name: Noir circuits (nargo check, optional)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Noir (noirup)
-        run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash || echo "noirup install failed"
-          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
-      - name: nargo check (skips if unavailable)
-        run: |
-          if command -v nargo >/dev/null 2>&1; then
-            for d in circuits/*/; do
-              [ -f "$d/Nargo.toml" ] && (cd "$d" && nargo check) || true
-            done
-          else
-            echo "::warning::nargo not available; Noir checks skipped with reason"
-          fi
+      - run: pnpm build
+      # Prove all four recipes over deterministic capsules, verify locally, and
+      # durably reload — no Stellar network required (uses committed artifacts).
+      - name: Phase 3 offline fixture acceptance
+        run: pnpm phase3:fixture

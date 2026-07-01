@@ -1,0 +1,78 @@
+name: Phase 3 Testnet E2E (manual)
+
+# Manual, secret-gated: deploys the four per-circuit Groth16 verifiers to Stellar
+# testnet and runs the full Phase 3 acceptance (real Groth16 proofs verified
+# on-chain -> stellar_verified). Never runs on push/PR — it spends testnet funds.
+on:
+  workflow_dispatch:
+    inputs:
+      require_live:
+        description: "Require live protocol data (no deterministic fallback)"
+        type: boolean
+        default: false
+
+jobs:
+  phase3-testnet:
+    name: Deploy verifiers + full testnet E2E
+    runs-on: ubuntu-latest
+    # Only proceed when the testnet secrets are configured.
+    if: ${{ secrets.STELLAR_SECRET_KEY != '' }}
+    env:
+      SEFI_TESTNET_IDENTITY: ${{ secrets.SEFI_TESTNET_IDENTITY }}
+      SEFI_DEMO_POOL: ${{ secrets.SEFI_DEMO_POOL }}
+      SEFI_DEMO_WALLET: ${{ secrets.SEFI_DEMO_WALLET }}
+      STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli || cargo install --locked soroban-cli
+
+      - name: Cache circom binary
+        id: circom-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/circom
+          key: circom-2-2-3-${{ runner.os }}
+      - name: Build circom from source
+        if: steps.circom-cache.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/iden3/circom --tag v2.2.3 --locked || cargo install --git https://github.com/iden3/circom --locked
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build
+
+      - name: Configure Stellar testnet identity
+        run: |
+          stellar network add testnet --rpc-url https://soroban-testnet.stellar.org --network-passphrase "Test SDF Network ; September 2015" || true
+          if [ -n "${STELLAR_SECRET_KEY}" ]; then
+            echo "${STELLAR_SECRET_KEY}" | stellar keys add "${SEFI_TESTNET_IDENTITY:-sefi-testnet}" --secret-key || true
+          else
+            stellar keys generate "${SEFI_TESTNET_IDENTITY:-sefi-testnet}" --network testnet --fund || true
+          fi
+
+      - name: Build all circuits (circom:setup)
+        run: SEFI_REQUIRE_BN254=1 pnpm circom:setup
+
+      - name: Build verifier wasm
+        run: pnpm contracts:build
+
+      - name: Deploy per-circuit verifiers to testnet
+        run: pnpm deploy:phase3:testnet
+
+      - name: Full Phase 3 testnet E2E (stellar_verified for all recipes)
+        run: SEFI_REQUIRE_BN254=1 ${{ inputs.require_live && 'SEFI_REQUIRE_LIVE=1' || '' }} pnpm phase3:testnet
+
+      - name: Upload deployment record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-testnet-deployment
+          path: deployments/phase3-testnet.json

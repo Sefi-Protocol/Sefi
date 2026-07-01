@@ -9,11 +9,12 @@ Rules:
 3. Every recommendation must be tied to semantic facts returned by Sefi.
 4. If data is stale, missing, or low-confidence, say so.
 5. Explain actions in protocol language: borrow, repay, supply, withdraw, swap, route, LP deposit, LP withdraw.
-6. Never claim ZK proof unless the proof card backend is "bn254-noir" AND verification succeeded.
+6. Never claim ZK proof unless the proof card backend is "bn254-groth16" or "bn254-noir" AND local verification succeeded.
 7. For local-dev/prebuilt backends, say "source-backed"/"capsule-backed"/"policy-signed", never "ZK proven".
-8. Only say a proof is verified on Stellar when proofCard.verificationMode == "stellar_verified".
-9. Always describe results as "proof-of-data-used", never "proof-of-data-origin".
-10. Never reveal or echo private inputs.`;
+8. Only say a proof was "generated" after sefi_proof_verify_local returns valid:true.
+9. Only say a proof is "verified on Stellar" when proofCard.verificationMode == "stellar_verified".
+10. Always describe results as "proof-of-data-used", never "proof-of-data-origin".
+11. Never reveal or echo private/hidden inputs.`;
 
 export interface AgentToolSchema {
   type: "object";
@@ -211,7 +212,7 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
     {
       name: "sefi_compute_prove",
       description:
-        "Prove a deterministic policy over the selected Sefi context capsule (proof-of-data-used). Set intent.proof.backend to 'bn254-noir' for a real BN254 proof (requires toolchain), or 'auto'. Returns only revealed result, public roots, and the proof card — never private inputs.",
+        "Prove a deterministic policy over the selected Sefi context capsule (proof-of-data-used). Set intent.proof.backend to 'bn254-groth16' for a real Groth16/BN254 proof that verifies on the Soroban verifier (stellar_verified), 'bn254-noir' for a BN254/UltraHonk proof (requires toolchain), or 'auto'. Recipes: blend-utilization-policy, aquarius-route-policy, sdex-exit-policy, composite-borrow-exit-policy. Returns only revealed result, public roots, and the proof card — never private inputs.",
       parameters: {
         type: "object",
         properties: { intent: { type: "object" } },
@@ -229,8 +230,9 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
       },
     },
     {
-      name: "sefi_verify_local",
-      description: "Verify a Sefi proof envelope off-chain. Returns validity + reasons.",
+      name: "sefi_proof_verify_local",
+      description:
+        "Verify a Sefi proof envelope off-chain (real snarkjs cryptographic verification for bn254-groth16). Returns { valid, reasons }. Only claim a proof was generated after this returns valid:true.",
       parameters: {
         type: "object",
         properties: { proofEnvelope: { type: "object" } },
@@ -239,24 +241,51 @@ export function createSefiTools(sefi: SefiClient): AgentTool[] {
       execute: (a) => sefi.verify().local(a.proofEnvelope),
     },
     {
-      name: "sefi_verify_on_stellar",
+      name: "sefi_proof_verify_stellar",
       description:
-        "Submit/commit a proof card on Stellar. Phase 2 returns proof_card_commitment_only mode.",
+        "Verify a bn254-groth16 proof on Stellar against the circuit's deployed verifier contract. Pass verifierContractId (per-circuit). Returns verificationMode; only 'stellar_verified' means the on-chain pairing check passed.",
       parameters: {
         type: "object",
-        properties: { proofEnvelope: { type: "object" } },
+        properties: {
+          proofEnvelope: { type: "object" },
+          verifierContractId: { type: "string" },
+          network: { type: "string" },
+        },
         required: ["proofEnvelope"],
       },
-      execute: (a) => sefi.verify().onStellar(a.proofEnvelope),
+      execute: (a) =>
+        sefi.verify().onStellar(a.proofEnvelope, {
+          verifierContractId: a.verifierContractId,
+          network: a.network,
+        }),
     },
     {
-      name: "sefi_proof_card_get",
-      description: "Fetch a stored proof card by proofId (public result + roots + warnings only).",
+      name: "sefi_proof_card",
+      description: "Fetch a stored proof card by proofId (public result + roots + warnings only; never private inputs).",
       parameters: {
         type: "object",
         properties: { proofId: { type: "string" } },
         required: ["proofId"],
       },
+      execute: (a) => sefi.verify().proofCard(a.proofId),
+    },
+    // Backward-compatible aliases for the pre-Phase-3 tool names.
+    {
+      name: "sefi_verify_local",
+      description: "Alias of sefi_proof_verify_local.",
+      parameters: { type: "object", properties: { proofEnvelope: { type: "object" } }, required: ["proofEnvelope"] },
+      execute: (a) => sefi.verify().local(a.proofEnvelope),
+    },
+    {
+      name: "sefi_verify_on_stellar",
+      description: "Alias of sefi_proof_verify_stellar.",
+      parameters: { type: "object", properties: { proofEnvelope: { type: "object" }, verifierContractId: { type: "string" } }, required: ["proofEnvelope"] },
+      execute: (a) => sefi.verify().onStellar(a.proofEnvelope, { verifierContractId: a.verifierContractId }),
+    },
+    {
+      name: "sefi_proof_card_get",
+      description: "Alias of sefi_proof_card.",
+      parameters: { type: "object", properties: { proofId: { type: "string" } }, required: ["proofId"] },
       execute: (a) => sefi.verify().proofCard(a.proofId),
     },
   ];

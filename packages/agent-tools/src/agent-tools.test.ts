@@ -6,6 +6,7 @@ import { buildFact } from "@sefi/semantic-core";
 import { buildCapsule } from "@sefi/context-capsules";
 import { MemoryStore } from "@sefi/store";
 import { SefiClient } from "@sefi/sdk";
+import { groth16ArtifactsReady } from "@sefi/proofs";
 import { createSefiTools, SEFI_AGENT_SYSTEM_PROMPT } from "./index.js";
 
 const ADAPTER = "0x" + "a1".repeat(32);
@@ -25,7 +26,7 @@ async function seededClient() {
   await store.saveSourceRecords([src]);
   await store.saveFacts(facts);
   await store.saveCapsule(capsule);
-  return { sefi: new SefiClient({ network: "mainnet" }, store), capsule };
+  return { sefi: new SefiClient({ network: "mainnet" }, store), capsule, store };
 }
 
 const proveIntent = (capsuleId: string) => ({
@@ -40,8 +41,48 @@ const proveIntent = (capsuleId: string) => ({
 
 test("system prompt encodes the ZK + privacy rules", () => {
   assert.match(SEFI_AGENT_SYSTEM_PROMPT, /bn254-noir/);
+  assert.match(SEFI_AGENT_SYSTEM_PROMPT, /bn254-groth16/);
   assert.match(SEFI_AGENT_SYSTEM_PROMPT, /proof-of-data-used/);
-  assert.match(SEFI_AGENT_SYSTEM_PROMPT, /Never reveal or echo private inputs/);
+  assert.match(SEFI_AGENT_SYSTEM_PROMPT, /stellar_verified/);
+  assert.match(SEFI_AGENT_SYSTEM_PROMPT, /Never reveal or echo private/);
+});
+
+test("required Phase 3 agent tool names are present", async () => {
+  const { sefi } = await seededClient();
+  const names = new Set(createSefiTools(sefi).map((t) => t.name));
+  for (const required of [
+    "sefi_context_compose",
+    "sefi_compute_prove",
+    "sefi_proof_verify_local",
+    "sefi_proof_verify_stellar",
+    "sefi_proof_card",
+  ]) {
+    assert.ok(names.has(required), `missing required tool ${required}`);
+  }
+});
+
+test("agent groth16 flow: prove -> verify_local -> proof_card, no private leak", { skip: groth16ArtifactsReady("blend-utilization-policy") ? false : "circom artifacts missing" }, async () => {
+  const { sefi, capsule, store } = await seededClient();
+  const tools = createSefiTools(sefi);
+  const prove = tools.find((t) => t.name === "sefi_compute_prove")!;
+  const verify = tools.find((t) => t.name === "sefi_proof_verify_local")!;
+  const cardTool = tools.find((t) => t.name === "sefi_proof_card")!;
+
+  const intent = { ...proveIntent(capsule.id), proof: { backend: "bn254-groth16" as const, verifyOn: "stellar" as const, proveDataUsed: true } };
+  const out = (await prove.execute({ intent })) as any;
+  assert.equal(out.backend, "bn254-groth16");
+  // The prove tool never returns private inputs.
+  assert.ok(!JSON.stringify(out).includes("0.82") && !JSON.stringify(out).includes("820000"), "prove tool must not leak private input");
+
+  // The agent may only claim "generated" after local verification passes. The
+  // prove tool persisted the envelope; reload it and verify via the tool.
+  const envelope = await store.getProofEnvelope(out.proofId);
+  const v = (await verify.execute({ proofEnvelope: envelope })) as any;
+  assert.equal(v.valid, true, JSON.stringify(v.reasons));
+
+  const card = (await cardTool.execute({ proofId: out.proofId })) as any;
+  assert.equal(card.proofId, out.proofId);
+  assert.equal(card.trustModel, "proof-of-data-used");
 });
 
 test("sefi_compute_prove tool output redacts private inputs", async () => {

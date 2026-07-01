@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import express from "express";
 import type { Network } from "@sefi/shared-types";
 import { SefiClient } from "@sefi/sdk";
+import type { SefiStore } from "@sefi/store";
 import { createStore, runMigrations } from "@sefi/store";
 import { verifyCapsule } from "@sefi/context-capsules";
 
@@ -42,6 +43,18 @@ async function bootstrap() {
     store,
   );
 
+  const app = buildApp(sefi, store, NETWORK);
+  app.listen(PORT, () => {
+    // eslint-disable-next-line no-console
+    console.log(`[api] Sefi API listening on :${PORT} (network=${NETWORK}, live)`);
+  });
+}
+
+/**
+ * Build the Sefi Express app (all routes). Exported so tests can mount it on an
+ * ephemeral port. Private inputs are never echoed by any handler.
+ */
+export function buildApp(sefi: SefiClient, store: SefiStore, network: Network): express.Express {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
 
@@ -59,7 +72,7 @@ async function bootstrap() {
     };
 
   app.get("/health", (_req, res) =>
-    res.json({ ok: true, network: NETWORK, live: true }),
+    res.json({ ok: true, network, live: true }),
   );
 
   // ---- Blend ----
@@ -268,14 +281,15 @@ async function bootstrap() {
     }),
   );
 
-  app.listen(PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(`[api] Sefi API listening on :${PORT} (network=${NETWORK}, live)`);
-  });
+  return app;
 }
 
-bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
-});
+// Only auto-start when run directly (not when imported by tests).
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (isMain) {
+  bootstrap().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    process.exit(1);
+  });
+}

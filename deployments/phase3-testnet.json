@@ -1,0 +1,30 @@
+{
+  "network": "testnet",
+  "deployer": "GAUTESFW2APS3ZUE4J5Y7EA26UPMQKHCWRWF5D4YGQLKFSUJZVJNW6TV",
+  "recipes": {
+    "blend-utilization-policy": {
+      "circuit": "blend_utilization",
+      "verifierContractId": "CAH6K6R2XRNDDMPFF7VRDNCW33RS5TD3NEO5LMCNQFF2UXLZ3RDSYVOG",
+      "verificationKeyHash": "0x63d0c8946517bc221b59c929118d79a9041615d31702a41a97493af5bcaa469e",
+      "deployTx": "cd04fe6dcf8ebb2e5ab8ed0aef466d38cbd83b771d3377f1c97fc3f5d51b7f62"
+    },
+    "aquarius-route-policy": {
+      "circuit": "aquarius_route",
+      "verifierContractId": "CAW6VOXHEZL6GW7T5G7GYGEIVTYLSHOMDNMSWPFHODQP5OOULGZDI6FO",
+      "verificationKeyHash": "0x53f4bb02e641bf707f5e210528d0663d085b503093fc1b63596974a06d52eca1",
+      "deployTx": "a657b025b3599b3cdd0090183ab5cb9c6e3e3f34c5200219f6a0e0255864ba7e"
+    },
+    "sdex-exit-policy": {
+      "circuit": "sdex_exit",
+      "verifierContractId": "CDUWJJWIVDP4F7VA2ZX6NXKVMYA6HBRQORQGK5BW65LW7M3ALASYUUJ7",
+      "verificationKeyHash": "0x609de4ad6ceed93d60cb965f00d2d7276242cebb12d91ce7f19df712355d0ed5",
+      "deployTx": "36b310e10c8e4e42cbb82d5d4fb48afc5c185b9601edb2b44f4f276c57674da4"
+    },
+    "composite-borrow-exit-policy": {
+      "circuit": "composite_borrow_exit",
+      "verifierContractId": "CAJ4CHE6FBPBQEPQYYMJZNVEMTZTZKR6APEYPCVU5WQG4VPEYLZ27YFP",
+      "verificationKeyHash": "0xf4db9377014812114112db23a01ffe74194a82eac93e26b7d5e5621111d21d74",
+      "deployTx": "38fb9179c5efff0887e7306dc8afeb3191c74e7462f034bc876f95a531adb5d4"
+    }
+  }
+}

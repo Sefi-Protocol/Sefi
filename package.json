@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --noEmit || tsc -b",
-    "test": "node --import tsx --test \"packages/**/*.test.ts\"",
+    "test": "node --import tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\"",
     "api": "tsx apps/api/src/index.ts",
     "worker": "tsx apps/worker/src/index.ts",
     "demo": "tsx apps/demo-agent/src/index.ts",
@@ -29,8 +29,10 @@
     "verify:proof:testnet": "tsx scripts/verify-proof-testnet.ts",
     "noir:build": "tsx scripts/noir-build.ts",
     "zk:test": "tsx scripts/zk-test.ts",
-    "prove:blend:bn254": "tsx scripts/prove-blend-bn254.ts",
-    "prove:composite:bn254": "tsx scripts/prove-composite-bn254.ts",
+    "prove:blend:bn254": "tsx scripts/prove-blend-groth16.ts",
+    "prove:composite:bn254": "tsx scripts/prove-composite-groth16.ts",
+    "prove:blend:bn254:noir": "tsx scripts/prove-blend-bn254.ts",
+    "prove:composite:bn254:noir": "tsx scripts/prove-composite-bn254.ts",
     "verify:proof:bn254": "tsx scripts/verify-proof-bn254.ts",
     "zk:testnet": "tsx scripts/verify-groth16-testnet.ts",
     "zk:localnet": "tsx scripts/zk-localnet.ts",
@@ -39,7 +41,14 @@
     "prove:compute:testnet": "tsx scripts/prove-verify-compute-testnet.ts",
     "verify:compute:stellar": "tsx scripts/prove-verify-compute-testnet.ts",
     "prove:blend:live": "tsx scripts/prove-blend-live-groth16.ts",
-    "prove:composite:live": "tsx scripts/prove-composite-live-groth16.ts"
+    "prove:composite:live": "tsx scripts/prove-composite-live-groth16.ts",
+    "prove:aquarius:bn254": "tsx scripts/prove-aquarius-groth16.ts",
+    "prove:sdex:bn254": "tsx scripts/prove-sdex-groth16.ts",
+    "prove:aquarius:live": "tsx scripts/prove-aquarius-live-groth16.ts",
+    "prove:sdex:live": "tsx scripts/prove-sdex-live-groth16.ts",
+    "deploy:phase3:testnet": "tsx scripts/deploy-phase3-verifiers-testnet.ts",
+    "phase3:testnet": "tsx scripts/phase3-testnet-e2e.ts",
+    "phase3:fixture": "SEFI_E2E_NO_CHAIN=1 SEFI_REQUIRE_BN254=1 tsx scripts/phase3-testnet-e2e.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

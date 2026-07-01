@@ -158,10 +158,36 @@ Key env vars: `SEFI_PROOF_BACKEND=bn254-noir`, `SEFI_NOIR_NARGO_PATH`,
 `STELLAR_TESTNET_SECRET`, `SEFI_REQUIRE_BN254=1`. See
 [ComputeKit + ProofKit](docs/computekit.md) and [BN254 / ZK](docs/zk-bn254.md).
 
+## Phase 3 — Full multi-protocol proof coverage
+
+All four recipes now produce real `bn254-groth16` proofs that are **verified on
+Stellar testnet** against a dedicated per-circuit verifier (`stellar_verified`),
+with private thresholds hidden:
+
+| Recipe | Circuit | Testnet verifier |
+|---|---|---|
+| `blend-utilization-policy` | `blend_utilization` | `CAH6K6R2XRNDDMPFF7VRDNCW33RS5TD3NEO5LMCNQFF2UXLZ3RDSYVOG` |
+| `aquarius-route-policy` | `aquarius_route` | `CAW6VOXHEZL6GW7T5G7GYGEIVTYLSHOMDNMSWPFHODQP5OOULGZDI6FO` |
+| `sdex-exit-policy` | `sdex_exit` | `CDUWJJWIVDP4F7VA2ZX6NXKVMYA6HBRQORQGK5BW65LW7M3ALASYUUJ7` |
+| `composite-borrow-exit-policy` | `composite_borrow_exit` | `CAJ4CHE6FBPBQEPQYYMJZNVEMTZTZKR6APEYPCVU5WQG4VPEYLZ27YFP` |
+
+```bash
+SEFI_REQUIRE_BN254=1 pnpm circom:setup   # build all 4 circuits
+pnpm prove:aquarius:bn254                # + prove:sdex:bn254 / prove:composite:bn254
+pnpm phase3:fixture                      # offline: prove all 4 + verify + durable reload
+pnpm deploy:phase3:testnet               # deploy 4 verifiers
+SEFI_REQUIRE_BN254=1 pnpm phase3:testnet # full on-chain acceptance -> ✅ PHASE 3 COMPLETE
+```
+
+See [Phase 3 coverage](docs/PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md) and
+[Proofs](docs/proofs.md).
+
 ## Docs
 
 - [Architecture](docs/architecture.md)
 - [SDK](docs/sdk.md)
+- [Proofs (Phase 3)](docs/proofs.md)
+- [Phase 3 multi-protocol proof coverage](docs/PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md)
 - [ComputeKit + ProofKit (Phase 2)](docs/computekit.md)
 - Adapters: [Blend](docs/adapters/blend.md) · [Aquarius](docs/adapters/aquarius.md) · [SDEX](docs/adapters/sdex.md)
 - [Proof-of-Data handoff](docs/proof-of-data-handoff.md)

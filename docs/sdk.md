@@ -87,3 +87,39 @@ interface SefiAnswer {
   warnings: string[];
 }
 ```
+
+## Compute + Proofs (Phase 3)
+
+Prove a policy over live protocol data with a real Groth16 proof, verify it
+locally and on Stellar, and read the proof card — private thresholds stay hidden.
+
+```ts
+const proof = await sefi.compute().prove({
+  name: "composite-borrow-exit-policy",
+  context: {
+    blend:    { poolId, wallet, include: ["reserves", "oracle", "positions"] },
+    aquarius: { route: { tokenIn: "USDC", tokenOut: "XLM", amountIn } },
+    sdex:     { path: { sourceAsset: "USDC", destinationAsset: "XLM", sourceAmount: amountIn } },
+  },
+  compute: RECIPES["composite-borrow-exit-policy"],
+  privateInputs: { minHealth: "1.25", minReceive: "99000000" },
+  privateInputSchema: { minHealth: "fixed_1e6", minReceive: "u128" },
+  reveal: ["allowed"], hide: ["minHealth", "minReceive"],
+  proof: { backend: "bn254-groth16", verifyOn: "stellar", proveDataUsed: true },
+});
+
+const local = await sefi.verify().local(proof.proofEnvelope);           // { valid, reasons }
+const chain = await sefi.verify().onStellar(proof.proofEnvelope, {       // per-circuit verifier
+  verifierContractId, network: "testnet",
+});                                                                       // stellar_verified iff on-chain check passes
+const card  = await sefi.verify().proofCard(proof.proofEnvelope.proofId);
+```
+
+Recipes: `blend-utilization-policy`, `aquarius-route-policy`, `sdex-exit-policy`,
+`composite-borrow-exit-policy`. Each maps to its own circuit + testnet verifier
+(see [proofs.md](proofs.md) and
+[PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md](PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md)).
+
+Agent tools: `sefi_context_compose`, `sefi_compute_prove`,
+`sefi_proof_verify_local`, `sefi_proof_verify_stellar`, `sefi_proof_card`
+(`@sefi/agent-tools`).

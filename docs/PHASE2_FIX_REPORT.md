@@ -214,3 +214,20 @@ The missing bridge (Sefi ComputeIntent proof → Soroban verifier →
 ```
 No private input (`maxUtilization`) appears in the card, envelope, public inputs,
 or API responses (asserted by the redaction tests).
+
+---
+
+## Phase 3 follow-up — full multi-protocol proof coverage
+
+Phase 2 shipped the Blend Groth16 path. Phase 3 extends real `bn254-groth16`
+proving + on-chain `stellar_verified` verification to **all four** recipes:
+
+- New circuits `aquarius_route` and `sdex_exit`; composite audited + kept.
+- One Groth16 verifier contract per circuit (different VKs) deployed to testnet;
+  registry in `deployments/phase3-testnet.json`.
+- Full Groth16 test matrix (per-recipe correctness + circuit-level tamper +
+  cross-cutting security + durable roundtrip + API + agent tools).
+- `pnpm phase3:testnet` proves all four, verifies each on-chain against its own
+  verifier, and asserts every reloaded proof card is `stellar_verified`.
+
+Details: [PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md](PHASE3_MULTI_PROTOCOL_PROOF_COVERAGE.md).

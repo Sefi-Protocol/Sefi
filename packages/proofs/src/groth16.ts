@@ -23,6 +23,8 @@ import { buildWitness, witnessToCircomInput, referenceEvaluate } from "./witness
 
 const RECIPE_CIRCUIT: Record<string, string> = {
   "blend-utilization-policy": "blend_utilization",
+  "aquarius-route-policy": "aquarius_route",
+  "sdex-exit-policy": "sdex_exit",
   "composite-borrow-exit-policy": "composite_borrow_exit",
 };
 
@@ -50,6 +52,16 @@ function artifacts(recipe: string) {
     zkey: join(dir, `${circuit}.zkey`),
     vkey: join(dir, `${circuit}.vkey.json`),
   };
+}
+
+/** Absolute paths to a recipe's circom artifacts (wasm/zkey/vkey). */
+export function groth16ArtifactPaths(recipe: string): {
+  circuit: string;
+  wasm: string;
+  zkey: string;
+  vkey: string;
+} {
+  return artifacts(recipe);
 }
 
 export function groth16ArtifactsReady(recipe: string): boolean {
@@ -162,6 +174,31 @@ export function groth16ToSoroban(g: {
     },
     // Public inputs are the snarkjs publicSignals (each a decimal field string).
     publicInputs: g.publicSignals.map((s) => fieldBe(s)),
+  };
+}
+
+/**
+ * Serialize just a snarkjs verification key into the Soroban verifier's
+ * VerifyingKey layout (alpha_g1, beta_g2, gamma_g2, delta_g2, ic[]). Used by the
+ * deploy script to `init` a per-circuit verifier from its committed vkey.json,
+ * without needing a proof. Same G1/G2 byte order as {@link groth16ToSoroban}.
+ */
+export function groth16VkToSoroban(vkey: any): {
+  alpha_g1: string;
+  beta_g2: string;
+  gamma_g2: string;
+  delta_g2: string;
+  ic: string[];
+} {
+  const g1 = (p: any[]): string => fieldBe(p[0]) + fieldBe(p[1]);
+  const g2 = (p: any[][]): string =>
+    fieldBe(p[0][1]) + fieldBe(p[0][0]) + fieldBe(p[1][1]) + fieldBe(p[1][0]);
+  return {
+    alpha_g1: g1(vkey.vk_alpha_1),
+    beta_g2: g2(vkey.vk_beta_2),
+    gamma_g2: g2(vkey.vk_gamma_2),
+    delta_g2: g2(vkey.vk_delta_2),
+    ic: vkey.IC.map((p: any[]) => g1(p)),
   };
 }
 

@@ -9,18 +9,27 @@
 # circuit's zkey+vkey together.
 #
 #   pnpm circom:setup                                   # all recipe circuits
+#   SEFI_CIRCUITS=blend_utilization  pnpm circom:setup
+#   SEFI_CIRCUITS=aquarius_route      pnpm circom:setup
+#   SEFI_CIRCUITS=sdex_exit           pnpm circom:setup
 #   SEFI_CIRCUITS=composite_borrow_exit pnpm circom:setup
+#   SEFI_CIRCUITS=all                 pnpm circom:setup   # (same as default)
 set -euo pipefail
 
 CIRCOM_DIR="circuits/circom"
 BUILD="$CIRCOM_DIR/build"
 PTAU_POWER="${SEFI_PTAU_POWER:-16}"
+# All Phase 3 recipe circuits. `all` (or unset) builds every one.
+ALL_CIRCUITS="blend_utilization aquarius_route sdex_exit composite_borrow_exit"
 mkdir -p "$BUILD"
 
 if ! command -v circom >/dev/null 2>&1; then
-  echo "circom not found; install circom 2.x (cargo install --git https://github.com/iden3/circom)"; exit 1
+  echo "FAIL: circom not found; install circom 2.x (cargo install --git https://github.com/iden3/circom)"; exit 1
 fi
 SNARKJS="npx snarkjs"
+if ! node -e "require.resolve('snarkjs')" >/dev/null 2>&1; then
+  echo "FAIL: snarkjs not found; run 'pnpm install'"; exit 1
+fi
 
 # 1) One shared powers-of-tau (deterministic: fixed entropy + beacon).
 PTAU="$BUILD/pot_final.ptau"
@@ -36,8 +45,15 @@ if [ ! -f "$PTAU" ]; then
 fi
 
 # SEFI_CIRCUITS overrides the circuit list (e.g. CI builds only blend for speed).
-for CIRCUIT in ${SEFI_CIRCUITS:-blend_utilization composite_borrow_exit}; do
+# "all" (or unset) builds every recipe circuit.
+SELECTED="${SEFI_CIRCUITS:-all}"
+if [ "$SELECTED" = "all" ]; then SELECTED="$ALL_CIRCUITS"; fi
+
+for CIRCUIT in $SELECTED; do
   echo "== $CIRCUIT =="
+  if [ ! -f "$CIRCOM_DIR/$CIRCUIT.circom" ]; then
+    echo "FAIL: circuit source $CIRCOM_DIR/$CIRCUIT.circom not found"; exit 1
+  fi
   circom "$CIRCOM_DIR/$CIRCUIT.circom" --r1cs --wasm --sym \
     -l node_modules/circomlib/circuits -o "$BUILD"
   $SNARKJS groth16 setup "$BUILD/$CIRCUIT.r1cs" "$PTAU" "$BUILD/${CIRCUIT}_0.zkey"
@@ -48,6 +64,10 @@ for CIRCUIT in ${SEFI_CIRCUITS:-blend_utilization composite_borrow_exit}; do
   mv "$BUILD/${CIRCUIT}_final.zkey" "$BUILD/$CIRCUIT.zkey"
   rm -f "$BUILD/${CIRCUIT}_0.zkey"
   $SNARKJS zkey export verificationkey "$BUILD/$CIRCUIT.zkey" "$BUILD/$CIRCUIT.vkey.json"
+  # Fail loudly if the vkey did not materialise.
+  if [ ! -s "$BUILD/$CIRCUIT.vkey.json" ]; then
+    echo "FAIL: verification key for $CIRCUIT was not generated"; exit 1
+  fi
   echo "  -> $BUILD/$CIRCUIT.zkey + $CIRCUIT.vkey.json"
 done
 
