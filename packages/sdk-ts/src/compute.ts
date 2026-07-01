@@ -200,6 +200,28 @@ export class VerifyModule {
         proof: sor.proof,
         publicInputs: sor.publicInputs,
       });
+
+      // When the on-chain verifier returns true, upgrade + persist the stored
+      // proof card to stellar_verified so the durable record reflects reality.
+      if (r.verified) {
+        const card = await this.rt.store.getProofCard(envelope.proofId);
+        if (card) {
+          const stellarNote =
+            `Verified on Stellar (${opts.network ?? "testnet"}) by verifier ${verifier}` +
+            (r.verificationTx ? `, tx ${r.verificationTx}` : "");
+          const updated = {
+            ...card,
+            verificationMode: "stellar_verified" as const,
+            warnings: [...card.warnings.filter((w) => !w.startsWith("Verified on Stellar")), stellarNote],
+          };
+          await this.rt.store.saveProofCard(updated, envelope.proofId);
+          // Also record the tx on the stored envelope.
+          await this.rt.store.saveProofEnvelope(
+            { ...envelope, verifierContractId: verifier, verificationTx: r.verificationTx, status: "verified" },
+            undefined,
+          );
+        }
+      }
       return {
         status: r.status,
         verificationMode: r.verificationMode,

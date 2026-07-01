@@ -80,6 +80,25 @@ test("groth16 verifyLocal rejects a tampered public signal", { skip: READY ? fal
   assert.equal(v.valid, false);
 });
 
+test("SECURITY: verifyLocal rejects a proof paired with a FLIPPED revealed result", { skip: READY ? false : "circom zkey not built" }, async () => {
+  const { capsule, facts } = blendFixture("700000000000", "1000000000000", "fresh");
+  const { result } = await proveComputeIntent({ intent: intent(), capsule, facts });
+  assert.equal(result.proofCard.publicResult.safe, true);
+  // Attacker keeps the valid proof (safe=1) but flips the claimed revealed result.
+  const forged = { ...result.proofEnvelope, revealed: { safe: false } };
+  const v = await verifyLocal(forged);
+  assert.equal(v.valid, false, "flipped revealed result must be rejected");
+  assert.ok(v.reasons.some((r) => /proven result .* does not match revealed result/.test(r)), v.reasons.join("; "));
+});
+
+test("SECURITY: verifyLocal rejects an envelope revealing more than one output", { skip: READY ? false : "circom zkey not built" }, async () => {
+  const { capsule, facts } = blendFixture("700000000000", "1000000000000", "fresh");
+  const { result } = await proveComputeIntent({ intent: intent(), capsule, facts });
+  const forged = { ...result.proofEnvelope, revealed: { safe: true, extra: true } };
+  const v = await verifyLocal(forged);
+  assert.equal(v.valid, false);
+});
+
 test("bn254-groth16 throws (no silent fallback) when the zkey is missing", { skip: READY ? "zkey present in this env" : false }, async () => {
   const { capsule, facts } = blendFixture("700000000000", "1000000000000", "fresh");
   await assert.rejects(() => proveComputeIntent({ intent: intent(), capsule, facts }), /SEFI_GROTH16_ARTIFACTS_MISSING/);

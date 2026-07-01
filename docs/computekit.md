@@ -26,8 +26,13 @@ ProofEnvelope + ProofCard  ── public roots, revealed result, warnings
 | Package | Role |
 |---|---|
 | `@sefi/compute` | DSL tokenizer/parser/AST, fact bindings, fixed-point normalize, compile, deterministic evaluate, named recipes |
-| `@sefi/proofs` | proof router, backends (local-dev, prebuilt, noir iface, risc0 iface), envelope, local verify, Noir detection |
-| `@sefi/verifier-registry-client` | Soroban verifier-registry client (commitment-only) |
+| `@sefi/proofs` | proof router, backends (**bn254-groth16** real ZK, bn254-noir, local-dev, prebuilt, risc0 iface), witness builder, envelope, local + on-chain verify |
+| `@sefi/verifier-registry-client` | Soroban verifier-registry client |
+
+The default backend is **bn254-groth16**: a real Groth16/BN254 proof of the
+actual ComputeIntent (circom + snarkjs) that verifies on the Soroban BN254
+verifier — `sefi.verify().onStellar(envelope)` returns `stellar_verified`. See
+[BN254 / ZK](zk-bn254.md).
 
 ## v2 fact commitment (spec §3)
 

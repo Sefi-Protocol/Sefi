@@ -37,7 +37,9 @@
     "verify:groth16:testnet": "tsx scripts/verify-groth16-testnet.ts",
     "circom:setup": "bash scripts/circom-setup.sh",
     "prove:compute:testnet": "tsx scripts/prove-verify-compute-testnet.ts",
-    "verify:compute:stellar": "tsx scripts/prove-verify-compute-testnet.ts"
+    "verify:compute:stellar": "tsx scripts/prove-verify-compute-testnet.ts",
+    "prove:blend:live": "tsx scripts/prove-blend-live-groth16.ts",
+    "prove:composite:live": "tsx scripts/prove-composite-live-groth16.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

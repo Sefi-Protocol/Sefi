@@ -5,6 +5,13 @@ import { getBackend } from "./router.js";
 const HEX32 = /^0x[0-9a-f]{64}$/;
 const BN254_FR = BN254_FR_MODULUS;
 
+/** Coerce a revealed boolean-ish value to the circuit's "1"/"0" output, or null. */
+function toBit(v: unknown): "1" | "0" | null {
+  if (v === true || v === 1 || v === "1" || v === "true") return "1";
+  if (v === false || v === 0 || v === "0" || v === "false") return "0";
+  return null;
+}
+
 export interface VerifyResult {
   valid: boolean;
   reasons: string[];
@@ -66,7 +73,7 @@ export async function verifyLocal(
   }
 
   // For bn254-groth16, the proof's public signals must match the envelope's
-  // committed zk roots + computeHash + resultHash (snarkjs order:
+  // committed values (snarkjs order:
   // [result, zkContextRoot, zkFactsRoot, computeHash, resultHash]). The circuit
   // works over BN254 Fr, so each commitment is the field-reduced (mod r) value.
   if (envelope.backend === "bn254-groth16" && pi) {
@@ -83,6 +90,22 @@ export async function verifyLocal(
         reasons.push("groth16 public signal computeHash != envelope computeHash");
       if (toFr(pi.resultHash) !== ps[4])
         reasons.push("groth16 public signal resultHash != envelope resultHash");
+
+      // SECURITY: the circuit output signal (ps[0]) is the actual proven boolean
+      // result. It MUST equal the single revealed value in the envelope; without
+      // this, an attacker could pair a valid proof of `safe=1` with a revealed
+      // `safe=false` claim. The recipes reveal exactly one boolean output.
+      const revealedValues = Object.values(envelope.revealed ?? {});
+      if (revealedValues.length !== 1) {
+        reasons.push("bn254-groth16 envelope must reveal exactly one output");
+      } else {
+        const expected = toBit(revealedValues[0]);
+        if (expected === null) reasons.push("bn254-groth16 revealed output is not boolean-coercible");
+        else if (ps[0] !== expected)
+          reasons.push(
+            `groth16 proven result (${ps[0]}) does not match revealed result (${expected})`,
+          );
+      }
     }
   }
 

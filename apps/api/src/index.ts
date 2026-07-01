@@ -19,6 +19,7 @@ async function bootstrap() {
       "0002_compute_proofs.sql",
       "0003_capsule_v2_roots.sql",
       "0004_ingestion_checkpoints.sql",
+      "0005_proof_groth16.sql",
     ]) {
       const sql = readFileSync(
         resolve(__dirname, `../../../services/postgres/migrations/${file}`),
@@ -164,9 +165,24 @@ async function bootstrap() {
       return { proofEnvelope: result.proofEnvelope, proofCard: result.proofCard };
     }),
   );
-  // BN254 proving alias (audit Part I): forces the real bn254-noir backend.
+  // BN254 proving: forces the real bn254-groth16 backend — a genuine Groth16
+  // proof of the ComputeIntent that verifies on the Soroban verifier
+  // (stellar_verified). This is the on-chain-verifiable path.
   app.post(
     "/v1/compute/prove-bn254",
+    wrap(async (req) => {
+      const intent = {
+        ...req.body,
+        proof: { ...(req.body.proof ?? {}), backend: "bn254-groth16" as const },
+      };
+      const result = await sefi.compute().prove(intent);
+      return { proofEnvelope: result.proofEnvelope, proofCard: result.proofCard };
+    }),
+  );
+  // Explicit UltraHonk/Noir path (commitment-only on-chain until an UltraHonk
+  // Soroban verifier is wired in).
+  app.post(
+    "/v1/compute/prove-noir",
     wrap(async (req) => {
       const intent = {
         ...req.body,

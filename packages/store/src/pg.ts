@@ -265,12 +265,20 @@ export class PgStore implements SefiStore {
     await this.pool.query(
       `INSERT INTO proof_envelopes
         (id, proof_type, backend, compute_intent_id, public_inputs, revealed,
-         proof_bytes, verifier_contract_id, verification_tx, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status`,
+         proof_bytes, groth16, verification_key, verifier_contract_id,
+         verification_tx, status, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (id) DO UPDATE SET
+         status = EXCLUDED.status,
+         verifier_contract_id = EXCLUDED.verifier_contract_id,
+         verification_tx = EXCLUDED.verification_tx`,
       [
         e.proofId, e.proofType, e.backend, computeIntentId ?? null,
         JSON.stringify(e.publicInputs), JSON.stringify(e.revealed), e.proofBytes,
+        // Persist the full Groth16 artifacts so a reloaded envelope can still be
+        // verified on-chain (durable stellar_verified).
+        e.groth16 ? JSON.stringify(e.groth16) : null,
+        e.verificationKey ?? null,
         e.verifierContractId ?? null, e.verificationTx ?? null, e.status, e.createdAt,
       ],
     );
@@ -282,6 +290,8 @@ export class PgStore implements SefiStore {
     return {
       proofId: r.id, proofType: r.proof_type, backend: r.backend,
       publicInputs: r.public_inputs, revealed: r.revealed, proofBytes: r.proof_bytes,
+      groth16: r.groth16 ?? undefined,
+      verificationKey: r.verification_key ?? undefined,
       verifierContractId: r.verifier_contract_id ?? undefined,
       verificationTx: r.verification_tx ?? undefined, status: r.status,
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
@@ -326,7 +336,11 @@ export class PgStore implements SefiStore {
          public_result_hash, public_result, verifier_hash, timestamp_ledger,
          result, trust_model, verification_mode, warnings)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET
+         verification_mode = EXCLUDED.verification_mode,
+         verifier_hash = EXCLUDED.verifier_hash,
+         result = EXCLUDED.result,
+         warnings = EXCLUDED.warnings`,
       [
         c.proofId, proofEnvelopeId, c.proofType, c.contextRoot, c.computeHash,
         c.publicResultHash, JSON.stringify(c.publicResult), c.verifierHash ?? null,

@@ -11,7 +11,7 @@ set -euo pipefail
 
 CIRCOM_DIR="circuits/circom"
 BUILD="$CIRCOM_DIR/build"
-PTAU_POWER="${SEFI_PTAU_POWER:-14}"
+PTAU_POWER="${SEFI_PTAU_POWER:-16}"
 mkdir -p "$BUILD"
 
 if ! command -v circom >/dev/null 2>&1; then
@@ -32,7 +32,7 @@ if [ ! -f "$PTAU" ]; then
   rm -f "$BUILD/pot_0.ptau" "$BUILD/pot_1.ptau" "$BUILD/pot_beacon.ptau"
 fi
 
-for CIRCUIT in blend_utilization; do
+for CIRCUIT in blend_utilization composite_borrow_exit; do
   echo "== $CIRCUIT =="
   circom "$CIRCOM_DIR/$CIRCUIT.circom" --r1cs --wasm --sym \
     -l node_modules/circomlib/circuits -o "$BUILD"

@@ -23,6 +23,7 @@ import { buildWitness, witnessToCircomInput, referenceEvaluate } from "./witness
 
 const RECIPE_CIRCUIT: Record<string, string> = {
   "blend-utilization-policy": "blend_utilization",
+  "composite-borrow-exit-policy": "composite_borrow_exit",
 };
 
 export class Groth16NotAvailableError extends Error {

@@ -162,12 +162,36 @@ The missing bridge (Sefi ComputeIntent proof → Soroban verifier →
 - `auto` now defaults named recipes to `bn254-groth16`. `bn254-noir` (UltraHonk)
   remains available via explicit selection.
 
+## Follow-up — production hardening (review round 3)
+
+- **Result binding (security).** `verifyLocal` now enforces that the circuit's
+  output public signal (`publicSignals[0]`) equals the single revealed boolean;
+  a proof of `safe=1` paired with a claimed `safe=false` is rejected. Tests:
+  `groth16.test.ts` "SECURITY: … FLIPPED revealed result".
+- **Durable proofs.** Migration `0005_proof_groth16.sql` + `PgStore` persist the
+  full `groth16 {proof, publicSignals, vkey}` (JSONB) + `verification_key`, so a
+  reloaded envelope still verifies on-chain. Test:
+  `proof-groth16-roundtrip.test.ts` (memory + real Postgres).
+- **ProofCard upgrade.** `onStellar()` upgrades + persists the stored ProofCard
+  to `verificationMode: "stellar_verified"` (with verifier + tx) when the
+  on-chain check passes; `saveProofCard` now upserts.
+- **API endpoint.** `/v1/compute/prove-bn254` now forces `bn254-groth16` (the
+  stellar_verified path); `/v1/compute/prove-noir` is the explicit UltraHonk path.
+- **Composite recipe wired.** `composite_borrow_exit.circom` (5 facts) is built
+  + proven end-to-end (`allowed`), same pattern as blend. Aquarius/SDEX single-
+  policy circuits are the natural next subset.
+- **Live-data E2E.** `scripts/prove-blend-live-groth16.ts` fetches LIVE mainnet
+  Blend data via the adapter (22 facts + source record) → capsule → real Groth16
+  proof → local verify → **on-chain stellar_verified** (tx
+  `4404b1a4325bbfd1b2aa9565f25c3b2a2f102acfedf8ce42cadb5d05338b3e64`; proof card
+  upgraded to stellar_verified). `pnpm prove:blend:live`.
+
 ## Remaining honest limitations
 - bn254-noir (UltraHonk) proofs are still committed-only on-chain (no UltraHonk
   Soroban verifier yet); the default bn254-groth16 path is fully
   `stellar_verified`.
-- Only the blend-utilization recipe has a circom circuit wired so far; the other
-  three recipes have Noir circuits + witness specs and follow the same pattern.
+- Aquarius-only and SDEX-only recipes reuse the composite circuit pattern but do
+  not yet each have a dedicated circom circuit (blend + composite are wired).
 - Trust model remains **proof-of-data-used**, never proof-of-data-origin.
 
 ## Sample proof card (private values redacted)
