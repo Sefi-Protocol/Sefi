@@ -100,3 +100,27 @@ UltraHonk proof; wiring bb's UltraHonk verification key into the on-chain
 verifier is the last step before SDK compute proofs themselves can be
 `stellar_verified` (today they are committed-only). The Groth16 verifier path
 above is genuinely `stellar_verified`.
+
+## Follow-up — actual ComputeIntent proof stellar_verified (Groth16, Option B)
+
+The bridge "Sefi ComputeIntent proof → Soroban verifier → stellar_verified" is
+now closed with a real Groth16 path (circom + snarkjs), plus production
+hardening:
+
+- bn254-groth16 backend proves the ACTUAL ComputeIntent; the circom circuit uses
+  circomlib Poseidon == poseidon-lite (golden-verified), so it binds to the exact
+  zkFactsRoot/zkContextRoot the capsule commits.
+- verifyLocal binds publicSignals[0] to the revealed boolean (result-binding
+  security fix); Groth16 artifacts persist in Postgres (0005) so reloaded proofs
+  still verify; onStellar upgrades + persists the ProofCard to stellar_verified.
+- /v1/compute/prove-bn254 now uses bn254-groth16; /v1/compute/prove-noir is the
+  explicit UltraHonk path.
+- blend + composite recipes wired to Groth16.
+- LIVE-DATA E2E (pnpm prove:blend:live): real mainnet Blend state → adapter → 22
+  facts + source record → ContextCapsule → real Groth16 proof → local verify →
+  on-chain stellar_verified (tx 4404b1a4325bbfd1b2aa9565f25c3b2a2f102acfedf8ce42cadb5d05338b3e64),
+  proof card upgraded to stellar_verified.
+- Canonical BLEND proving key + wasm + vkey committed as a matched set (snarkjs
+  setup is not bit-reproducible; the on-chain VK is derived from the current zkey
+  at runtime, so the pair is always consistent). CI runs SEFI_REQUIRE_BN254=1
+  pnpm zk:test against the committed artifacts (no circom build).
