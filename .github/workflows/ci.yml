@@ -49,35 +49,18 @@ jobs:
           cargo test --manifest-path contracts/noir_ultrahonk_verifier/Cargo.toml
 
   zk:
-    name: ZK (circom + snarkjs, real Groth16 proof of a ComputeIntent)
+    name: ZK (real Groth16 proof of a ComputeIntent, verified)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - name: Cache circom binary
-        id: circom-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/circom
-          key: circom-2.2.3-${{ runner.os }}
-      - name: Install circom 2.x (from source)
-        run: |
-          mkdir -p ~/.local/bin
-          if [ ! -x ~/.local/bin/circom ]; then
-            git clone --depth 1 --branch v2.2.3 https://github.com/iden3/circom.git /tmp/circom
-            cargo build --release --manifest-path /tmp/circom/Cargo.toml
-            cp /tmp/circom/target/release/circom ~/.local/bin/circom
-          fi
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          ~/.local/bin/circom --version
       - run: pnpm install --no-frozen-lockfile
-      - name: Build circuit + deterministic proving key
-        run: SEFI_REQUIRE_BN254=1 pnpm circom:setup
+      # The canonical BLEND proving key + wasm + vkey are committed, so no circom
+      # build is needed: generate + verify a REAL Groth16 proof of a ComputeIntent.
       - name: Real Groth16 proof + verify of a Sefi ComputeIntent (zk:test)
         run: SEFI_REQUIRE_BN254=1 pnpm zk:test
 

@@ -125,9 +125,17 @@ returns a genuine `stellar_verified` for Sefi compute proofs — not a separate
 test proof:
 
 ```bash
-pnpm circom:setup              # one-time: build circuit + proving key (deterministic)
+pnpm circom:setup              # one-time: build circuits + proving keys (deterministic)
 pnpm prove:compute:testnet     # prove ComputeIntent → verify SAME proof on testnet → stellar_verified
+pnpm prove:blend:live          # LIVE mainnet Blend data → capsule → proof → verify (+ on-chain if configured)
 ```
+
+Full **live-data** chain proven end-to-end: real mainnet Blend state → adapter →
+SemanticFacts → ContextCapsule → Groth16 proof → on-chain `stellar_verified`
+(the stored proof card is upgraded + persisted). The `blend-utilization` and
+`composite-borrow-exit` recipes are wired to Groth16; the proof's circuit output
+signal is bound to the revealed result, and Groth16 artifacts persist in Postgres
+so reloaded proofs stay verifiable.
 
 ### Real BN254 proof path (Noir + Soroban)
 

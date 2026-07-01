@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Deterministic Groth16 setup for the Sefi circom recipe circuits.
+# Groth16 setup for the Sefi circom recipe circuits.
 #
-# Uses FIXED entropy + a fixed beacon so the proving key (zkey) and verification
-# key (vkey) are reproducible: anyone who runs this gets the SAME vkey that is
-# committed in circuits/circom/build/<circuit>.vkey.json and registered on the
-# Soroban verifier. The zkey is large and gitignored; this script regenerates it.
+# NOTE: snarkjs `contribute` mixes OS randomness, so this is NOT bit-for-bit
+# reproducible. That is fine because every Sefi flow derives the on-chain
+# verification key from the CURRENT zkey at runtime (see groth16ToSoroban), so
+# the proving key and verifying key are always a matched pair. The canonical
+# BLEND artifacts are committed as a matched set; this script (re)builds any
+# circuit's zkey+vkey together.
 #
-#   pnpm circom:setup            # build + setup all recipe circuits
+#   pnpm circom:setup                                   # all recipe circuits
+#   SEFI_CIRCUITS=composite_borrow_exit pnpm circom:setup
 set -euo pipefail
 
 CIRCOM_DIR="circuits/circom"
@@ -32,7 +35,8 @@ if [ ! -f "$PTAU" ]; then
   rm -f "$BUILD/pot_0.ptau" "$BUILD/pot_1.ptau" "$BUILD/pot_beacon.ptau"
 fi
 
-for CIRCUIT in blend_utilization composite_borrow_exit; do
+# SEFI_CIRCUITS overrides the circuit list (e.g. CI builds only blend for speed).
+for CIRCUIT in ${SEFI_CIRCUITS:-blend_utilization composite_borrow_exit}; do
   echo "== $CIRCUIT =="
   circom "$CIRCOM_DIR/$CIRCUIT.circom" --r1cs --wasm --sym \
     -l node_modules/circomlib/circuits -o "$BUILD"
